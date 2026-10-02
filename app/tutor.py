@@ -36,13 +36,14 @@ def default_base_url() -> str:
 
 
 def call_tutor(question: str, tenant: str, base_url: str, max_tokens: int = MAX_TOKENS,
-               on_token=None, timeout_s: float = 300) -> dict:
+               on_token=None, timeout_s: float = 300, chapter: str | None = None) -> dict:
     """Ask one question. Return a record; never raise on HTTP or network errors.
 
     ttft_s is measured here: request sent -> first content token. It includes the network.
     prompt_tokens and output_tokens come from the engine's usage report.
+    chapter: if set, retrieval only looks at that chapter's chunks.
     """
-    chunks = retrieve(question)
+    chunks = retrieve(question, chapter=chapter)
     payload = {
         "model": SERVED_MODEL_NAME,
         "messages": build_messages(question, chunks),
@@ -54,6 +55,7 @@ def call_tutor(question: str, tenant: str, base_url: str, max_tokens: int = MAX_
         "ts": time.time(),
         "tenant": tenant,
         "question": question,
+        "chapter_filter": chapter,
         "base_url": base_url,
         "chunk_ids": [c["id"] for c in chunks],
         "chapters": sorted({c["chapter"] for c in chunks}),

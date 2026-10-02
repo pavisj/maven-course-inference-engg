@@ -34,11 +34,15 @@ def all_chunks() -> list[dict]:
     return _index()[0]
 
 
-def retrieve(question: str, top_k: int = TOP_K) -> list[dict]:
-    """Return the top_k chunks by BM25 score, best first. Each gets a "score" field."""
+def retrieve(question: str, top_k: int = TOP_K, chapter: str | None = None) -> list[dict]:
+    """Return the top_k chunks by BM25 score, best first. Each gets a "score" field.
+
+    chapter: if set (e.g. "07"), only chunks with that chapter label are candidates.
+    """
     chunks, bm25 = _index()
     scores = bm25.get_scores(words(question))
-    best = sorted(range(len(chunks)), key=lambda i: scores[i], reverse=True)[:top_k]
+    candidates = [i for i in range(len(chunks)) if chapter is None or chunks[i]["chapter"] == chapter]
+    best = sorted(candidates, key=lambda i: scores[i], reverse=True)[:top_k]
     return [{**chunks[i], "score": float(scores[i])} for i in best]
 
 
