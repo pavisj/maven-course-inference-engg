@@ -1,0 +1,14 @@
+# Required by the project brief
+corpus/
+.env
+.claude/settings.local.json
+
+# Claude Code worktrees and Remember plugin notes; not project code
+.claude/worktrees/
+.remember/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+.ipynb_checkpoints/
