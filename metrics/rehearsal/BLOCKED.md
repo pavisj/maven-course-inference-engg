@@ -12,6 +12,6 @@ To run it once the workers are up:
 modal deploy cluster/modal_vllm.py
 python cluster/write_workers.py
 bash traffic/rehearsal.sh          # about 26 minutes: 3 mixes x 8 min, plus warm probe
-python plots/make_plots.py --run-dir metrics/rehearsal
+python plots/make_plots.py --run-dir metrics/rehearsal --label "rehearsal"   # label: see OVERNIGHT.md, parked question
 modal app stop tutor-cluster
 ```
