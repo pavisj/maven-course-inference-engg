@@ -1,0 +1,74 @@
+[
+  {
+    "filename": "00-study-guide.pdf",
+    "chapter": "00",
+    "title": "AI Engineering System Design Practice Guide",
+    "pages": 171,
+    "chars": 408046,
+    "text_ok": true
+  },
+  {
+    "filename": "03a-engine-surgery-notes.pdf",
+    "chapter": "03",
+    "title": "Class 3 — Engine Surgery: vLLM, SGLang, TensorRT-LLM and the architecture-to-engine pipeline",
+    "pages": 12,
+    "chars": 30026,
+    "text_ok": true
+  },
+  {
+    "filename": "03b-engine-tracing-notes.pdf",
+    "chapter": "03",
+    "title": "Class 3b — Anatomy of an inference request, from a Python call to the memory bus",
+    "pages": 34,
+    "chars": 90381,
+    "text_ok": true
+  },
+  {
+    "filename": "05-inference-engine-notes.pdf",
+    "chapter": "05",
+    "title": "Class 5 — How an Inference Engine Actually Works",
+    "pages": 29,
+    "chars": 61876,
+    "text_ok": true
+  },
+  {
+    "filename": "06-week6-notes.pdf",
+    "chapter": "06",
+    "title": "Week 6 — Full Stack Inferencing and Introduction to Distributed Systems",
+    "pages": 26,
+    "chars": 63124,
+    "text_ok": true
+  },
+  {
+    "filename": "06b-week6-cohort-revision.pdf",
+    "chapter": "06",
+    "title": "Week 6 Revision Class — Compute, Memory and State, Control and Scheduling",
+    "pages": 40,
+    "chars": 18290,
+    "text_ok": true
+  },
+  {
+    "filename": "07-week7-notes.pdf",
+    "chapter": "07",
+    "title": "Week 7 — Admission Control, Queueing and Routing",
+    "pages": 17,
+    "chars": 53441,
+    "text_ok": true
+  },
+  {
+    "filename": "09-class9-9b-notes.pdf",
+    "chapter": "09",
+    "title": "Class 9 and 9b — Gateway, Router, Overflow, Tunnel, Observability",
+    "pages": 19,
+    "chars": 47049,
+    "text_ok": true
+  },
+  {
+    "filename": "10-system-design-notes.pdf",
+    "chapter": "10",
+    "title": "Class 10 — The Hop, the Kernel, and the Cold Start",
+    "pages": 25,
+    "chars": 62255,
+    "text_ok": true
+  }
+]
