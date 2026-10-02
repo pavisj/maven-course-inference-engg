@@ -10,7 +10,7 @@ Both workers run with `min_containers=1`, so **both GPUs bill for as long as the
 
 - **GPU:** an A10 costs $0.000306 per second on Modal, which is $1.10 per hour. Two workers cost $2.20 per hour.
 - **CPU and memory:** billed on top, by use. Expect roughly $0.15 to $0.65 per hour for both workers together.
-- **Total:** about $2.35 to $2.85 per hour, or about $53 to $68 per day if left running.
+- **Total:** about $2.35 to $2.85 per hour, or about $57 to $68 per day if left running.
 
 Run step 7 when you finish.
 
