@@ -15,7 +15,7 @@ import modal
 
 # True: --enforce-eager. No torch.compile, no CUDA graphs, so the boot is fast.
 # Use it for the first deploy. Set it to False after that for real decode speed.
-FAST_BOOT = True
+FAST_BOOT = False
 
 APP_NAME = "tutor-cluster"
 MODEL_NAME = "Qwen/Qwen2.5-3B-Instruct"
