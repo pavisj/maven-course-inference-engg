@@ -35,7 +35,11 @@ python cluster/write_workers.py
 python cluster/smoke.py
 
 # 5. Warm-up probe: the same request 5 times per worker, saved to metrics/warmup_<worker>.json
+#    For a true cold request 1, run it first on fresh containers (before smoke.py).
 python cluster/warm_probe.py
+#    Run it again on the same, now warm, containers: warmup_<worker>_warm.json.
+#    Cold minus warm request 1 = warm-up cost. Warm request 1 minus 5 = prefix-cache saving.
+python cluster/warm_probe.py --label warm
 
 # 6. GPU memory and model config for Part 1, saved to metrics/gpu_facts.json
 modal run cluster/gpu_facts.py
