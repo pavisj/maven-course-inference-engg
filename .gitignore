@@ -3,6 +3,10 @@ corpus/
 .env
 .claude/settings.local.json
 
+# Live worker URLs: unauthenticated, so keep them out of a public repo.
+# Rebuild with: python cluster/write_workers.py
+cluster/workers.json
+
 # Claude Code worktrees and Remember plugin notes; not project code
 .claude/worktrees/
 .remember/
