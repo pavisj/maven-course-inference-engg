@@ -40,10 +40,32 @@ _Draft. Inputs come from `metrics/gpu_facts.json` unless a line says otherwise. 
   - KV per sequence = 36,864 × 2,500 = 92,160,000 bytes = 87.9 MiB
 - The engine cap is `--max-num-seqs` = 32 at both lengths. 32 sequences need 9.0 GiB of KV at 8192 tokens and 2.75 GiB at 2,500 tokens. Both fit in 13.63 GiB.
 
+### Real prompt length
+
+Measured with the Qwen tokenizer on 12 tutor questions (`python -m app.prompt "<question>"`; questions listed below). Tokenizer only, no engine run (**verify** against the engine's `prompt_tokens` on the next deploy).
+
+- System prompt: 431 tokens (the same for every request: the shared prefix)
+- Retrieved chunks, top 5 by BM25: 1,242 to 1,857 tokens
+- Question: 10 to 17 tokens
+- Chat template and separators: 13 to 14 tokens
+- **Total prompt: median 2,094 tokens, minimum 1,698, maximum 2,317** (12 questions)
+- Output budget: `max_tokens` = 512 (`app/tutor.py`; **verify** that 512 suits the app)
+- KV length per sequence = prompt + output budget: median 2,094 + 512 = 2,606 tokens; maximum 2,317 + 512 = 2,829 tokens
+- Prompt share of the sequence: 80 % to 82 %. The workload is mostly prefill, as the brief says for Track A.
+
+Recomputed at the real length:
+
+- At 2,606 tokens (median): 14,638,773,197 / (36,864 × 2,606) = 14,638,773,197 / 96,067,584 = 152.38 sequences; KV per sequence = 91.6 MiB
+- At 2,829 tokens (maximum): 14,638,773,197 / (36,864 × 2,829) = 14,638,773,197 / 104,288,256 = 140.37 sequences; KV per sequence = 99.5 MiB
+- 32 sequences at 2,829 tokens need 32 × 99.5 MiB = 3.11 GiB of KV, out of 13.63 GiB.
+
+Questions measured: Little's Law and admission control; why prefix caching saves prefill; how PagedAttention stores KV in blocks; TTFT versus TPOT; when a gateway sheds instead of queueing; continuous versus static batching; chunked prefill and its flag; why decode is memory-bandwidth bound; KV after preemption; routing a shared-prefix request; cold starts and warming; KV bytes per token.
+
 ### Expected first limiter
 
 - At 8192 tokens: prefill compute, because KV holds 48 full-length sequences while the engine runs at most 32, and each 8192-token prompt is a long prefill (**verify** under load).
 - At 2,500 tokens: prefill compute, because KV holds 158 sequences, five times the 32-slot cap, so KV stays far from full while every request brings about 2,000 uncached prompt tokens to prefill (**verify** under load).
+- At the real length, 2,606 to 2,829 tokens: prefill compute, for the same reason: KV holds 140 to 152 sequences against 32 slots, and only the 431-token system prompt is shared, so about 1,270 to 1,890 prompt tokens per request are uncached, median about 1,660 (prompt − 431; **verify** under load, since the prefix cache reuses whole 16-token blocks only).
   - Measured hint: a warm cache miss of 495 prompt tokens took 53 to 84 ms of engine TTFT (`metrics/warmup_WorkerA_warm.json`, `metrics/warmup_WorkerB_warm.json`). That is roughly 6,000 to 9,000 prompt tokens per second per worker (**verify**: one request at a time, not under load).
 
 ## Part 2. Design the cluster

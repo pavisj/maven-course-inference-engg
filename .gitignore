@@ -1,5 +1,7 @@
 # Required by the project brief
 corpus/
+# Full text of the course notes, built from corpus/ by: python -m app.ingest
+app/chunks.jsonl
 .env
 .claude/settings.local.json
 

@@ -1,4 +1,13 @@
-# Laptop-side tools for cluster/ (smoke, warm probe, worker URLs).
-# The GPU image pins its own vllm version in cluster/modal_vllm.py.
+# Laptop-side tools (Python 3.10). The GPU image pins its own vllm version in cluster/modal_vllm.py.
+
+# cluster/: smoke, warm probe, worker URLs
 modal==1.6.0
 httpx==0.28.1
+
+# app/: ingest, retrieve, prompt, tutor
+pypdf==6.19.0
+rank-bm25==0.2.2
+numpy==2.2.6
+transformers==5.18.0
+tokenizers==0.23.2
+jinja2==3.1.6
