@@ -26,8 +26,8 @@ VLLM_VERSION = "0.21.0"  # the version Modal's example is tested with
 MINUTES = 60  # seconds
 VLLM_PORT = 8000
 
-# Modal now calls this GPU "A10". Its docs no longer list "A10G".
-# It is the same 24 GB card that AWS sells as the A10G.
+# Modal's docs list "A10" and no longer list "A10G".
+# CUDA reports the device as "NVIDIA A10", 22.06 GiB total (metrics/gpu_facts.json).
 GPU = "A10"
 
 vllm_image = (
