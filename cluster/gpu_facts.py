@@ -46,7 +46,8 @@ def gpu_facts() -> dict:
         "model_revision": MODEL_REVISION,
         "config": {field: getattr(config, field) for field in CONFIG_FIELDS},
         "torch_dtype": str(getattr(config, "torch_dtype", None)),
-        "versions": {"torch": torch.__version__, "cuda": torch.version.cuda, "vllm": VLLM_VERSION},
+        # str(): torch.__version__ is a torch type the laptop cannot unpickle without torch
+        "versions": {"torch": str(torch.__version__), "cuda": str(torch.version.cuda), "vllm": VLLM_VERSION},
     }
 
 
