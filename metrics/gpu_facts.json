@@ -1,0 +1,24 @@
+{
+  "gpu_requested": "A10",
+  "gpu_name": "NVIDIA A10",
+  "mem_get_info": {
+    "free_bytes": 23437180928,
+    "total_bytes": 23684841472,
+    "free_gib": 21.83,
+    "total_gib": 22.06
+  },
+  "model": "Qwen/Qwen2.5-3B-Instruct",
+  "model_revision": "aa8e72537993ba99e69dfaafa59ed015b17504d1",
+  "config": {
+    "num_hidden_layers": 36,
+    "num_key_value_heads": 2,
+    "hidden_size": 2048,
+    "num_attention_heads": 16
+  },
+  "torch_dtype": "torch.bfloat16",
+  "versions": {
+    "torch": "2.11.0+cu130",
+    "cuda": "13.0",
+    "vllm": "0.21.0"
+  }
+}

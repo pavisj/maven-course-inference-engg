@@ -1,0 +1,16 @@
+2026-10-03 02:20:07+05:30 (EngineCore pid=23) INFO 10-02 20:50:07 [default_loader.py:397] Loading weights took 1.56 seconds
+2026-10-03 02:20:07+05:30 (EngineCore pid=23) INFO 10-02 20:50:07 [gpu_model_runner.py:4959] Model loading took 5.79 GiB memory and 22.471371 seconds
+2026-10-03 02:20:08+05:30 (EngineCore pid=23) INFO 10-02 20:50:08 [default_loader.py:397] Loading weights took 1.17 seconds
+2026-10-03 02:20:08+05:30 (EngineCore pid=23) INFO 10-02 20:50:08 [gpu_model_runner.py:4959] Model loading took 5.79 GiB memory and 23.900556 seconds
+2026-10-03 02:21:32+05:30 (EngineCore pid=23) INFO 10-02 20:51:32 [gpu_worker.py:462] Available KV cache memory: 13.67 GiB
+2026-10-03 02:21:32+05:30 (EngineCore pid=23) INFO 10-02 20:51:32 [kv_cache_utils.py:1710] GPU KV cache size: 398,016 tokens
+2026-10-03 02:21:32+05:30 (EngineCore pid=23) INFO 10-02 20:51:32 [kv_cache_utils.py:1711] Maximum concurrency for 8,192 tokens per request: 48.59x
+2026-10-03 02:21:32+05:30 (EngineCore pid=23) INFO 10-02 20:51:32 [core.py:306] init engine (profile, create kv cache, warmup model) took 84.63 s
+2026-10-03 02:21:33+05:30 (EngineCore pid=23) WARNING 10-02 20:51:33 [vllm.py:942] Enforce eager set, disabling torch.compile and CUDAGraphs. This is equivalent to setting -cc.mode=none -cc.cudagraph_mode=none
+2026-10-03 02:21:33+05:30 (EngineCore pid=23) INFO 10-02 20:51:33 [gpu_worker.py:462] Available KV cache memory: 13.67 GiB
+2026-10-03 02:21:33+05:30 (EngineCore pid=23) INFO 10-02 20:51:33 [kv_cache_utils.py:1710] GPU KV cache size: 398,016 tokens
+2026-10-03 02:21:33+05:30 (EngineCore pid=23) INFO 10-02 20:51:33 [kv_cache_utils.py:1711] Maximum concurrency for 8,192 tokens per request: 48.59x
+2026-10-03 02:21:33+05:30 (EngineCore pid=23) INFO 10-02 20:51:33 [core.py:306] init engine (profile, create kv cache, warmup model) took 84.85 s
+2026-10-03 02:21:34+05:30 (APIServer pid=4) INFO:     Application startup complete.
+2026-10-03 02:21:34+05:30 (EngineCore pid=23) WARNING 10-02 20:51:34 [vllm.py:942] Enforce eager set, disabling torch.compile and CUDAGraphs. This is equivalent to setting -cc.mode=none -cc.cudagraph_mode=none
+2026-10-03 02:21:35+05:30 (APIServer pid=4) INFO:     Application startup complete.
