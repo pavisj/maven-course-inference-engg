@@ -29,6 +29,7 @@ the warm-up cost. Warm request 1 minus warm request 5 is the prefix-cache saving
 import argparse
 import json
 import time
+from pathlib import Path
 
 import httpx
 
@@ -37,6 +38,7 @@ from client import (
     QUESTION,
     SERVED_MODEL_NAME,
     SYSTEM_PROMPT,
+    WORKERS_FILE,
     find_metric,
     load_workers,
     parse_metrics,
@@ -108,19 +110,21 @@ def main():
         help="suffix for the output file, e.g. 'warm' writes warmup_<worker>_warm.json. "
         "Use it for a re-run on a warm engine, so the cold-start file is kept.",
     )
+    parser.add_argument("--workers", type=Path, default=WORKERS_FILE, help="JSON {name: url}")
+    parser.add_argument("--out-dir", type=Path, default=METRICS_DIR, help="where to write warmup_*.json")
     args = parser.parse_args()
     suffix = f"_{args.label}" if args.label else ""
 
-    METRICS_DIR.mkdir(exist_ok=True)
-    for name, url in load_workers().items():
+    args.out_dir.mkdir(parents=True, exist_ok=True)
+    for name, url in load_workers(args.workers).items():
         print(f"\n=== {name}  {url}")
         result = probe(name, url)
         result["label"] = args.label or "cold"
-        out = METRICS_DIR / f"warmup_{name}{suffix}.json"
+        out = args.out_dir / f"warmup_{name}{suffix}.json"
         out.write_text(json.dumps(result, indent=2) + "\n")
         first, last = result["ttft_s"][0], result["ttft_s"][-1]
         print(f"  request 1 vs {N_REQUESTS}: {first * 1000:.0f} ms -> {last * 1000:.0f} ms (laptop)")
-        print(f"  saved {out.relative_to(METRICS_DIR.parent)}")
+        print(f"  saved {out}")
 
 
 if __name__ == "__main__":

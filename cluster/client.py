@@ -63,11 +63,11 @@ explain only that step again with a different example.\
 QUESTION = "In one paragraph: why does a KV cache make decoding faster?"
 
 
-def load_workers() -> dict[str, str]:
-    """Return {worker_name: base_url} from cluster/workers.json."""
-    if not WORKERS_FILE.exists():
-        raise SystemExit(f"missing {WORKERS_FILE}. Run: python cluster/write_workers.py")
-    return json.loads(WORKERS_FILE.read_text())
+def load_workers(path: Path = WORKERS_FILE) -> dict[str, str]:
+    """Return {worker_name: base_url} from cluster/workers.json (or another file)."""
+    if not path.exists():
+        raise SystemExit(f"missing {path}. Run: python cluster/write_workers.py")
+    return json.loads(path.read_text())
 
 
 def wait_healthy(url: str, timeout_s: float = 15 * 60) -> float:
