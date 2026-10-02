@@ -18,8 +18,15 @@ Per request it records three numbers:
 Request 1 is only "cold" for the engine if nothing ran on this container
 before it. smoke.py warms kernels too, so for a true cold number run this
 probe first on a freshly started container.
+
+To split warm-up from prefix caching, run it twice:
+    python cluster/warm_probe.py               # fresh container: cold engine, cache miss
+    python cluster/warm_probe.py --label warm  # same container: warm engine, cache miss
+Request 1 of each run is a cache miss (new session id). Cold minus warm is
+the warm-up cost. Warm request 1 minus warm request 5 is the prefix-cache saving.
 """
 
+import argparse
 import json
 import time
 
@@ -94,11 +101,22 @@ def probe(name: str, url: str) -> dict:
 
 
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--label",
+        default="",
+        help="suffix for the output file, e.g. 'warm' writes warmup_<worker>_warm.json. "
+        "Use it for a re-run on a warm engine, so the cold-start file is kept.",
+    )
+    args = parser.parse_args()
+    suffix = f"_{args.label}" if args.label else ""
+
     METRICS_DIR.mkdir(exist_ok=True)
     for name, url in load_workers().items():
         print(f"\n=== {name}  {url}")
         result = probe(name, url)
-        out = METRICS_DIR / f"warmup_{name}.json"
+        result["label"] = args.label or "cold"
+        out = METRICS_DIR / f"warmup_{name}{suffix}.json"
         out.write_text(json.dumps(result, indent=2) + "\n")
         first, last = result["ttft_s"][0], result["ttft_s"][-1]
         print(f"  request 1 vs {N_REQUESTS}: {first * 1000:.0f} ms -> {last * 1000:.0f} ms (laptop)")
