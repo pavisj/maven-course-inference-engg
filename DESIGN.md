@@ -2,6 +2,50 @@
 
 ## Part 1. Capacity on paper
 
+_Draft. Inputs come from `metrics/gpu_facts.json` unless a line says otherwise. Every assumption is marked **verify**._
+
+### Inputs
+
+- `num_hidden_layers` = 36, `num_key_value_heads` = 2, `hidden_size` = 2048, `num_attention_heads` = 16 (`metrics/gpu_facts.json`)
+- `mem_get_info` free = 23,437,180,928 bytes, total = 23,684,841,472 bytes (`metrics/gpu_facts.json`)
+- Parameter count = 3,085,938,688 (Hugging Face safetensors index; not in `gpu_facts.json`, **verify**)
+- `--gpu-memory-utilization` = 0.90, `--max-model-len` = 8192, `--max-num-seqs` = 32 (`cluster/modal_vllm.py`)
+
+### KV bytes per token
+
+- head_dim = hidden_size / num_attention_heads = 2048 / 16 = 128
+- KV bytes per token = 2 (K and V) × num_hidden_layers × num_key_value_heads × head_dim × 2 bytes = 2 × 36 × 2 × 128 × 2 = 36,864 bytes = 36 KiB
+- Model switch: none yet. Same model since step 1, so bytes per token have not changed.
+
+### Weights
+
+- Weights at FP16 = parameter count × 2 bytes = 3,085,938,688 × 2 = 6,171,877,376 bytes = 6.17 GB (5.75 GiB)
+- Measured: vLLM logged 5.79 GiB for weights (`metrics/worker_startup_log.txt`).
+
+### Free memory for KV
+
+- Activations = 1 GB = 1,000,000,000 bytes (**verify**: a round assumption, not measured)
+- Free for KV = (mem_get_info free − weights − activations) × 0.90 = (23,437,180,928 − 6,171,877,376 − 1,000,000,000) × 0.90 = 16,265,303,552 × 0.90 = 14,638,773,197 bytes = 14.64 GB (13.63 GiB)
+- KV capacity = free for KV / KV bytes per token = 14,638,773,197 / 36,864 = 397,102 tokens
+- Measured: vLLM allocated 13.67 GiB = 398,016 tokens (`metrics/worker_startup_log.txt`). vLLM applies 0.90 to total memory, then subtracts weights and its measured activation peak. This formula applies 0.90 after subtracting. The two land within 0.3 % (**verify** the cause if the gap grows).
+
+### max_concurrent_seqs
+
+`max_concurrent_seqs ≈ (HBM − weights − activations) / (kv_bytes_per_token × max_len)`
+
+- At max_len 8192: 14,638,773,197 / (36,864 × 8192) = 14,638,773,197 / 301,989,888 = 48.47 sequences
+  - KV per sequence = 36,864 × 8192 = 301,989,888 bytes = 288 MiB
+  - Measured: vLLM logged 48.59 sequences at 8,192 tokens.
+- At the app's length, 2,500 tokens (**verify**: assumed until `app/` exists; recomputed below in "Real prompt length"): 14,638,773,197 / (36,864 × 2,500) = 14,638,773,197 / 92,160,000 = 158.84 sequences
+  - KV per sequence = 36,864 × 2,500 = 92,160,000 bytes = 87.9 MiB
+- The engine cap is `--max-num-seqs` = 32 at both lengths. 32 sequences need 9.0 GiB of KV at 8192 tokens and 2.75 GiB at 2,500 tokens. Both fit in 13.63 GiB.
+
+### Expected first limiter
+
+- At 8192 tokens: prefill compute, because KV holds 48 full-length sequences while the engine runs at most 32, and each 8192-token prompt is a long prefill (**verify** under load).
+- At 2,500 tokens: prefill compute, because KV holds 158 sequences, five times the 32-slot cap, so KV stays far from full while every request brings about 2,000 uncached prompt tokens to prefill (**verify** under load).
+  - Measured hint: a warm cache miss of 495 prompt tokens took 53 to 84 ms of engine TTFT (`metrics/warmup_WorkerA_warm.json`, `metrics/warmup_WorkerB_warm.json`). That is roughly 6,000 to 9,000 prompt tokens per second per worker (**verify**: one request at a time, not under load).
+
 ## Part 2. Design the cluster
 
 ### 1. GPU
