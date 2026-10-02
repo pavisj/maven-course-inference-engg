@@ -1,0 +1,4 @@
+# Laptop-side tools for cluster/ (smoke, warm probe, worker URLs).
+# The GPU image pins its own vllm version in cluster/modal_vllm.py.
+modal==1.6.0
+httpx==0.28.1
