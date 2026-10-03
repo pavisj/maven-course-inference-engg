@@ -3,7 +3,10 @@
     python -m app.tutor "why does prefix caching save prefill time?" --tenant interactive
     python -m app.tutor "..." --tenant batch --base-url https://...workera...modal.direct
 
---base-url defaults to WorkerA in cluster/workers.json.
+--base-url defaults to WorkerA in cluster/workers.json, so the baselines stay reproducible.
+For the gateway, pass --base-url http://127.0.0.1:8765. Every request sends the X-Tenant header;
+the worker ignores it, the gateway uses it. A 429 or 400 from the gateway records its reason
+and retry_after_seconds.
 Logs one JSON row per call to metrics/app_calls.jsonl: TTFT, prompt tokens, output tokens.
 
 There is no gateway yet: this calls the worker directly.
@@ -73,14 +76,23 @@ def call_tutor(question: str, tenant: str, base_url: str, max_tokens: int | None
         "total_s": None,
         "status": None,
         "error": None,
+        "reason": None,
+        "retry_after_s": None,
     }
     start = time.perf_counter()
     try:
         with httpx.stream("POST", f"{base_url.rstrip('/')}/v1/chat/completions",
-                          json=payload, timeout=timeout_s) as r:
+                          json=payload, headers={"X-Tenant": tenant}, timeout=timeout_s) as r:
             record["status"] = r.status_code
             if r.status_code != 200:
-                record["error"] = r.read().decode(errors="replace")[:300]
+                text = r.read().decode(errors="replace")
+                record["error"] = text[:300]
+                try:
+                    body = json.loads(text)
+                    record["reason"] = body.get("reason")
+                    record["retry_after_s"] = body.get("retry_after_seconds")
+                except (json.JSONDecodeError, AttributeError):
+                    pass
                 return record
             for line in r.iter_lines():
                 if not line.startswith("data: ") or line == "data: [DONE]":
