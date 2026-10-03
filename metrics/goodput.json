@@ -281,5 +281,33 @@
     },
     "late_answers": 5,
     "ttft_p50_ms": 1084
+  },
+  {
+    "run": "J",
+    "folder": "run_j",
+    "users": 96,
+    "through_gateway": true,
+    "minutes": 4.2,
+    "offered_per_min": 864.0,
+    "answered_per_min": 432.0,
+    "goodput_per_min": 432.0,
+    "goodput_share": 0.5,
+    "by_tenant": {
+      "batch": {
+        "offered_per_min": 432.0,
+        "goodput_per_min": 7.4
+      },
+      "interactive": {
+        "offered_per_min": 432.0,
+        "goodput_per_min": 424.6
+      }
+    },
+    "by_worker_goodput_per_min": {
+      "Overflow": 2.4,
+      "WorkerA": 214.7,
+      "WorkerB": 214.9
+    },
+    "late_answers": 0,
+    "ttft_p50_ms": 3523
   }
 ]

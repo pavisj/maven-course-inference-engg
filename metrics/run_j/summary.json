@@ -1,0 +1,129 @@
+{
+  "run": "run_j",
+  "requests_sent": 3626,
+  "decisions": {
+    "shed": 1813,
+    "overflow": 10,
+    "ok": 1803
+  },
+  "sheds_by_reason_tenant": {
+    "batch/over_cap": 1767,
+    "batch/timeout_queue": 15,
+    "interactive/over_cap": 19,
+    "interactive/timeout_queue": 12
+  },
+  "sheds_by_stage": {
+    "admit": 1786,
+    "queue": 27
+  },
+  "guard_rejects": {},
+  "leave": {},
+  "aborts": {
+    "queued": 0,
+    "in_flight": 0
+  },
+  "admitted_by_tenant": {
+    "interactive": 1772,
+    "batch": 31
+  },
+  "placed_by_worker": {
+    "WorkerA": 901,
+    "WorkerB": 902
+  },
+  "preferred_by_worker": {
+    "WorkerB": 817,
+    "WorkerA": 986
+  },
+  "hops": {
+    "total": 899,
+    "by_route": {
+      "WorkerA->WorkerB": 489,
+      "WorkerB->WorkerA": 410
+    },
+    "tokens_recomputed": 1899237,
+    "share_of_admitted": 0.499
+  },
+  "gateway_ttft_ms": {
+    "all": {
+      "p50": 3518,
+      "p95": 4576
+    },
+    "interactive": {
+      "p50": 3506,
+      "p95": 4557
+    },
+    "batch": {
+      "p50": 4236,
+      "p95": 6624
+    }
+  },
+  "est_vs_measured": {
+    "n": 1803,
+    "est_p50_s": 3.118,
+    "measured_p50_s": 3.518,
+    "measured_over_est_p50": 1.15,
+    "within_50pct": 0.932,
+    "queue_wait_p95_s": 3.984,
+    "network_offset_s": 0.2762,
+    "measured_minus_trip_p50_s": 3.241,
+    "within_50pct_minus_trip": 0.895
+  },
+  "overflow": {
+    "sent": 10,
+    "failed": 0,
+    "limited": 19,
+    "interactive_over_cap_429": 19,
+    "overflow_ttft_ms": {
+      "p50": 992,
+      "p95": 1026
+    },
+    "cluster_interactive_ttft_ms": {
+      "p50": 3506,
+      "p95": 4557
+    },
+    "overflow_prompt_tokens_median": 2062.5
+  },
+  "by_mix": {
+    "mixed": {
+      "sent": 3626,
+      "admitted": 1803,
+      "shed": {
+        "over_cap": 1786,
+        "timeout_queue": 27
+      },
+      "hopped": 887,
+      "gateway_ttft_p50_ms": 3518,
+      "gateway_ttft_p95_ms": 4576,
+      "laptop_ttft_p50_ms": 3523,
+      "laptop_ttft_p95_ms": 4641
+    }
+  },
+  "workers": {
+    "WorkerA": {
+      "max_running": 32.0,
+      "max_waiting": 0.0,
+      "max_kv_pct": 14.1,
+      "preemptions": 0,
+      "prefix_hit_pct": 53.3,
+      "engine_ttft_mean_ms": 395,
+      "requests_seen": 901,
+      "gateway_queue_max": 13.0,
+      "gateway_queue_mean": 11.4,
+      "gateway_in_flight_max": 32.0,
+      "gateway_in_flight_mean": 30.3
+    },
+    "WorkerB": {
+      "max_running": 32.0,
+      "max_waiting": 2.0,
+      "max_kv_pct": 14.3,
+      "preemptions": 0,
+      "prefix_hit_pct": 54.0,
+      "engine_ttft_mean_ms": 413,
+      "requests_seen": 902,
+      "gateway_queue_max": 13.0,
+      "gateway_queue_mean": 11.0,
+      "gateway_in_flight_max": 32.0,
+      "gateway_in_flight_mean": 30.4
+    }
+  }
+}

@@ -1,0 +1,209 @@
+{
+  "base": "run_i",
+  "new": "run_j",
+  "run_i": {
+    "goodput_per_min": 322.6,
+    "goodput_interactive": 192.5,
+    "goodput_batch": 130.1,
+    "goodput_by_worker": {
+      "Overflow": 9.7,
+      "WorkerA": 160.7,
+      "WorkerB": 152.7
+    },
+    "offered_per_min": 636.3,
+    "goodput_share": 0.507,
+    "late": 5,
+    "requests_sent": 2637,
+    "admitted_by_tenant": {
+      "interactive": 763,
+      "batch": 539
+    },
+    "sheds": {
+      "batch/over_cap": 48,
+      "batch/tenant_tokens": 731,
+      "interactive/over_cap": 496,
+      "interactive/timeout_queue": 20
+    },
+    "ttft_ms": {
+      "all": {
+        "p50": 1080,
+        "p95": 3205
+      },
+      "interactive": {
+        "p50": 757,
+        "p95": 2187
+      },
+      "batch": {
+        "p50": 1634,
+        "p95": 5444
+      }
+    },
+    "overflow": {
+      "sent": 40,
+      "limited": 496,
+      "failed": 0
+    },
+    "overflow_ttft_ms": {
+      "p50": 1007,
+      "p95": 2143
+    },
+    "est_p50_s": 0.817,
+    "measured_p50_s": 1.08,
+    "within_50_raw": 0.604,
+    "trip_s": 0.3478,
+    "within_50_minus_trip": 0.477,
+    "measured_minus_trip_p50_s": 0.732,
+    "within_50_minus_348ms": 0.477,
+    "est": {
+      "est_min_s": 0.4,
+      "est_p50_s": 1.688,
+      "share_below_0_4_s": 0.0
+    },
+    "early": {
+      "window_s": 15.0,
+      "requests": 294,
+      "timeout_queue": 20,
+      "timeout_queue_by_tenant": {
+        "interactive": 20
+      },
+      "timeout_queue_est_max_s": 16.15,
+      "timeout_queue_whole_run": 20
+    },
+    "workers": {
+      "WorkerA": {
+        "prefix_hit_pct": 69.5,
+        "engine_ttft_mean_ms": 250,
+        "max_kv_pct": 11.6,
+        "preemptions": 0,
+        "gateway_queue_max": 8.0,
+        "gateway_in_flight_mean": 17.2
+      },
+      "WorkerB": {
+        "prefix_hit_pct": 68.5,
+        "engine_ttft_mean_ms": 278,
+        "max_kv_pct": 10.3,
+        "preemptions": 0,
+        "gateway_queue_max": 8.0,
+        "gateway_in_flight_mean": 16.8
+      }
+    },
+    "hops": 436,
+    "hop_share": 0.335
+  },
+  "run_j": {
+    "goodput_per_min": 432.0,
+    "goodput_interactive": 424.6,
+    "goodput_batch": 7.4,
+    "goodput_by_worker": {
+      "Overflow": 2.4,
+      "WorkerA": 214.7,
+      "WorkerB": 214.9
+    },
+    "offered_per_min": 864.0,
+    "goodput_share": 0.5,
+    "late": 0,
+    "requests_sent": 3626,
+    "admitted_by_tenant": {
+      "interactive": 1772,
+      "batch": 31
+    },
+    "sheds": {
+      "batch/over_cap": 1767,
+      "batch/timeout_queue": 15,
+      "interactive/over_cap": 19,
+      "interactive/timeout_queue": 12
+    },
+    "ttft_ms": {
+      "all": {
+        "p50": 3518,
+        "p95": 4576
+      },
+      "interactive": {
+        "p50": 3506,
+        "p95": 4557
+      },
+      "batch": {
+        "p50": 4236,
+        "p95": 6624
+      }
+    },
+    "overflow": {
+      "sent": 10,
+      "limited": 19,
+      "failed": 0
+    },
+    "overflow_ttft_ms": {
+      "p50": 992,
+      "p95": 1026
+    },
+    "est_p50_s": 3.118,
+    "measured_p50_s": 3.518,
+    "within_50_raw": 0.932,
+    "trip_s": 0.2762,
+    "within_50_minus_trip": 0.895,
+    "measured_minus_trip_p50_s": 3.241,
+    "within_50_minus_348ms": 0.882,
+    "est": {
+      "est_min_s": 0.15,
+      "est_p50_s": 3.175,
+      "share_below_0_4_s": 0.018
+    },
+    "early": {
+      "window_s": 15.0,
+      "requests": 269,
+      "timeout_queue": 26,
+      "timeout_queue_by_tenant": {
+        "interactive": 12,
+        "batch": 14
+      },
+      "timeout_queue_est_max_s": 3.426,
+      "timeout_queue_whole_run": 27
+    },
+    "workers": {
+      "WorkerA": {
+        "prefix_hit_pct": 53.3,
+        "engine_ttft_mean_ms": 395,
+        "max_kv_pct": 14.1,
+        "preemptions": 0,
+        "gateway_queue_max": 13.0,
+        "gateway_in_flight_mean": 30.3
+      },
+      "WorkerB": {
+        "prefix_hit_pct": 54.0,
+        "engine_ttft_mean_ms": 413,
+        "max_kv_pct": 14.3,
+        "preemptions": 0,
+        "gateway_queue_max": 13.0,
+        "gateway_in_flight_mean": 30.4
+      }
+    },
+    "hops": 899,
+    "hop_share": 0.499
+  },
+  "whatif": [
+    {
+      "knob": "interactive over_cap trigger 2 s -> 4 s",
+      "tenant": "interactive",
+      "predicted_admitted_more": 520,
+      "measured_shed_change": -507,
+      "measured_admitted_change": 1009,
+      "predicted_goodput_change": 121.02,
+      "measured_goodput_change": 232.1
+    },
+    {
+      "knob": "tenant windows x1 -> x2",
+      "tenant": "batch (all of the base run's tenant_tokens sheds)",
+      "predicted_admitted_more": 509,
+      "measured_shed_change": -731,
+      "measured_admitted_change": -508,
+      "predicted_goodput_change": 127.53,
+      "measured_goodput_change": -122.7
+    },
+    {
+      "knob": "both together (sum of the two first-order predictions)",
+      "tenant": "all",
+      "predicted_goodput_change": 248.6,
+      "measured_goodput_change": 109.4
+    }
+  ]
+}

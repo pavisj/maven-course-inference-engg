@@ -1,0 +1,10 @@
+{
+  "over_cap_ttft_s": 4.0,
+  "tenant_window_scale": 2.0,
+  "tenant_window_tokens": {
+    "interactive": 800000,
+    "batch": 300000
+  },
+  "base_ttft_s": 0.0,
+  "warm_ttft_s": 0.28
+}
