@@ -242,8 +242,8 @@ def main():
     if fallbacks:
         out.append("No match arrived 30 seconds after the first row, so the first match was used: "
                    + ", ".join(fallbacks) + ".")
-    out.append("The aborted row shows code 200 because the gateway records 200 once the stream starts. "
-               "The client left after that.")
+    out.append("Run L's aborted row shows code 200: the gateway then recorded 200 once the stream started. "
+               "Since step 18 an aborted row records 499.")
     out.append("The guard row has no prompt tokens because the gateway records them only after the guard passes.")
     (HERE / "stories.md").write_text("\n".join(out) + "\n")
     print(f"wrote {HERE / 'stories.md'}")

@@ -20,5 +20,5 @@ Each story is the first matching gateway row that arrived at least 30 seconds af
 kv_free on the normal engine: never fired, needs ≈140 sequences, cap is 32. It fired only in run F2 (pressure2 engine: 0.4 GPU memory, 64 seats).
 
 No match arrived 30 seconds after the first row, so the first match was used: `run_l_guard:1` (exit 1), `run_i:1` (exit 3), `run_l_abort:1` (exit 11).
-The aborted row shows code 200 because the gateway records 200 once the stream starts. The client left after that.
+Run L's aborted row shows code 200: the gateway then recorded 200 once the stream started. Since step 18 an aborted row records 499.
 The guard row has no prompt tokens because the gateway records them only after the guard passes.
