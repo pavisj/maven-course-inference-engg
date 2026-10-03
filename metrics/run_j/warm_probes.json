@@ -1,0 +1,92 @@
+{
+  "label": "run J, after the deploy at 17:56 IST",
+  "ts": 1791030803.761894,
+  "workers": {
+    "WorkerA": {
+      "run_id": "20261003-180323",
+      "probes": [
+        {
+          "chapter": "00",
+          "status": 200,
+          "prompt_tokens": 2090,
+          "engine_ttft_s": 0.1975,
+          "laptop_ttft_s": 0.4691
+        },
+        {
+          "chapter": "03",
+          "status": 200,
+          "prompt_tokens": 2338,
+          "engine_ttft_s": 0.2396,
+          "laptop_ttft_s": 0.5113
+        },
+        {
+          "chapter": "05",
+          "status": 200,
+          "prompt_tokens": 2325,
+          "engine_ttft_s": 0.2391,
+          "laptop_ttft_s": 0.511
+        },
+        {
+          "chapter": "07",
+          "status": 200,
+          "prompt_tokens": 2205,
+          "engine_ttft_s": 0.2301,
+          "laptop_ttft_s": 0.5017
+        },
+        {
+          "chapter": "10",
+          "status": 200,
+          "prompt_tokens": 2241,
+          "engine_ttft_s": 0.2312,
+          "laptop_ttft_s": 0.5079
+        }
+      ],
+      "last_engine_ttft_s": 0.2312,
+      "threshold_s": 0.211,
+      "warm": false
+    },
+    "WorkerB": {
+      "run_id": "20261003-180330",
+      "probes": [
+        {
+          "chapter": "00",
+          "status": 200,
+          "prompt_tokens": 2090,
+          "engine_ttft_s": 0.5502,
+          "laptop_ttft_s": 0.8392
+        },
+        {
+          "chapter": "03",
+          "status": 200,
+          "prompt_tokens": 2338,
+          "engine_ttft_s": 0.2407,
+          "laptop_ttft_s": 0.5143
+        },
+        {
+          "chapter": "05",
+          "status": 200,
+          "prompt_tokens": 2325,
+          "engine_ttft_s": 0.241,
+          "laptop_ttft_s": 0.5114
+        },
+        {
+          "chapter": "07",
+          "status": 200,
+          "prompt_tokens": 2205,
+          "engine_ttft_s": 0.2313,
+          "laptop_ttft_s": 0.5003
+        },
+        {
+          "chapter": "10",
+          "status": 200,
+          "prompt_tokens": 2241,
+          "engine_ttft_s": 0.244,
+          "laptop_ttft_s": 0.5172
+        }
+      ],
+      "last_engine_ttft_s": 0.244,
+      "threshold_s": 0.211,
+      "warm": false
+    }
+  }
+}

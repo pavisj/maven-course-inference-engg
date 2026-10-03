@@ -31,6 +31,7 @@ import uvicorn
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, PlainTextResponse, Response, StreamingResponse
 
+import cluster.warm as warm
 from cluster.warm import probe_worker
 import control.admit as admit
 from control.admit import AdmitRequest, est_ttft, overflow_instead, should_shed
@@ -375,8 +376,12 @@ def main():
                         help="interactive over_cap trigger in seconds (run I: 2; run J: 4)")
     parser.add_argument("--base-ttft", type=float, default=admit.BASE_TTFT_S,
                         help="prefill-backlog floor in the estimate, seconds (run I: 0.4; run J: 0 = removed)")
+    parser.add_argument("--warm-ttft", type=float, default=warm.WARM_TTFT_S,
+                        help="warm line: last probe engine TTFT at most this, seconds (default 0.211; run J: 0.28)")
     args = parser.parse_args()
-    settings = admit.apply_settings(args.over_cap_ttft, args.tenant_window_scale, args.base_ttft)
+    warm.WARM_TTFT_S = args.warm_ttft
+    settings = {**admit.apply_settings(args.over_cap_ttft, args.tenant_window_scale, args.base_ttft),
+                "warm_ttft_s": warm.WARM_TTFT_S}
     print(f"admit settings: {settings}", flush=True)
     args.out_dir.mkdir(parents=True, exist_ok=True)
     (args.out_dir / "admit_settings.json").write_text(json.dumps(settings, indent=2) + "\n")
