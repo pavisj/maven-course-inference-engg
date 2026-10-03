@@ -1,0 +1,13 @@
+run_g start 2026-10-03T10:45:31Z: mixed, 96 users, 240 s each, policy prefix_then_load, 32 seats
+[transformers] PyTorch was not found. Models won't be available and only tokenizers, configuration and file/data utilities can be used.
+all warm after 14 s: {'WorkerA': True, 'WorkerB': True}
+mixed: 96 users for 240 s -> http://127.0.0.1:8765
+2747 requests, 1317 ok; by status: {'200': 1317, '429 over_cap': 636, '429 tenant_tokens': 770, '429 timeout_queue': 24}
+TTFT p50 987 ms, p95 3461 ms (laptop-measured, includes network)
+prompt tokens median 2064, output tokens median 218
+  tenant batch: 1373 requests
+  tenant interactive: 1374 requests
+wrote metrics/run_g/traffic_mixed.jsonl
+scraping WorkerA, WorkerB, gateway every 5 s -> metrics/run_g/scrape_run_g.jsonl
+stopped after 51 scrapes; wrote metrics/run_g/scrape_run_g.jsonl
+run_g end 2026-10-03T10:50:00Z

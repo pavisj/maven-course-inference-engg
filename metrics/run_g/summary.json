@@ -1,0 +1,111 @@
+{
+  "run": "run_g",
+  "requests_sent": 2747,
+  "decisions": {
+    "shed": 1430,
+    "ok": 1317
+  },
+  "sheds_by_reason_tenant": {
+    "batch/over_cap": 68,
+    "batch/tenant_tokens": 770,
+    "interactive/over_cap": 568,
+    "interactive/timeout_queue": 24
+  },
+  "sheds_by_stage": {
+    "admit": 1427,
+    "queue": 3
+  },
+  "guard_rejects": {},
+  "leave": {},
+  "aborts": {
+    "queued": 0,
+    "in_flight": 0
+  },
+  "admitted_by_tenant": {
+    "interactive": 782,
+    "batch": 535
+  },
+  "placed_by_worker": {
+    "WorkerA": 677,
+    "WorkerB": 640
+  },
+  "preferred_by_worker": {
+    "WorkerA": 651,
+    "WorkerB": 666
+  },
+  "hops": {
+    "total": 479,
+    "by_route": {
+      "WorkerB->WorkerA": 252,
+      "WorkerA->WorkerB": 227
+    },
+    "tokens_recomputed": 981049,
+    "share_of_admitted": 0.364
+  },
+  "gateway_ttft_ms": {
+    "all": {
+      "p50": 976,
+      "p95": 3301
+    },
+    "interactive": {
+      "p50": 716,
+      "p95": 2172
+    },
+    "batch": {
+      "p50": 1369,
+      "p95": 4850
+    }
+  },
+  "est_vs_measured": {
+    "n": 1317,
+    "est_p50_s": 0.824,
+    "measured_p50_s": 0.977,
+    "measured_over_est_p50": 1.05,
+    "within_50pct": 0.565,
+    "queue_wait_p95_s": 2.19
+  },
+  "by_mix": {
+    "mixed": {
+      "sent": 2747,
+      "admitted": 1317,
+      "shed": {
+        "over_cap": 636,
+        "timeout_queue": 24,
+        "tenant_tokens": 770
+      },
+      "hopped": 478,
+      "gateway_ttft_p50_ms": 976,
+      "gateway_ttft_p95_ms": 3301,
+      "laptop_ttft_p50_ms": 987,
+      "laptop_ttft_p95_ms": 3461
+    }
+  },
+  "workers": {
+    "WorkerA": {
+      "max_running": 32.0,
+      "max_waiting": 0.0,
+      "max_kv_pct": 12.9,
+      "preemptions": 0,
+      "prefix_hit_pct": 70.8,
+      "engine_ttft_mean_ms": 246,
+      "requests_seen": 677,
+      "gateway_queue_max": 8.0,
+      "gateway_queue_mean": 1.8,
+      "gateway_in_flight_max": 32.0,
+      "gateway_in_flight_mean": 17.7
+    },
+    "WorkerB": {
+      "max_running": 32.0,
+      "max_waiting": 0.0,
+      "max_kv_pct": 12.1,
+      "preemptions": 0,
+      "prefix_hit_pct": 67.2,
+      "engine_ttft_mean_ms": 286,
+      "requests_seen": 639,
+      "gateway_queue_max": 8.0,
+      "gateway_queue_mean": 1.7,
+      "gateway_in_flight_max": 32.0,
+      "gateway_in_flight_mean": 16.9
+    }
+  }
+}
