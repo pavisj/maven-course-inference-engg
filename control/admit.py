@@ -37,7 +37,7 @@ DEADLINE_S = {"interactive": 6.0, "batch": 60.0}
 IDLE_TTFT_S = 0.15               # Little's law floor: baseline A engine TTFT mean, 153 ms (Step 5a)
 STEP_TOKENS = 4096               # prefill backlog: --max-num-batched-tokens, prefill tokens per engine step (Part 1)
 STEP_SECONDS = 0.85              # prefill backlog: seconds per full step (Step 4 assumption; now only a lower bound)
-BASE_TTFT_S = 0.4                # prefill backlog: TTFT with nothing waiting (Step 4)
+BASE_TTFT_S = 0.4                # prefill backlog: TTFT with nothing waiting (Step 4); run J: 0 (gateway --base-ttft)
 
 # kv_free
 BLOCK_TOKENS = 16                # vLLM block_size (vllm:cache_config_info)
@@ -46,7 +46,7 @@ KV_SHED_PCT = 85.0               # keep 15 % of KV free for decode growth (basel
 
 # over_cap
 BATCH_MAX_WAITING = 8            # batch: shed when vLLM waiting + gateway queue for the worker reaches 8 (Step 5a)
-OVER_CAP_TTFT_S = 2.0            # interactive: shed only when seats are full and est_ttft is above 2 s
+OVER_CAP_TTFT_S = 2.0            # interactive: shed only when seats are full and est_ttft is above 2 s; run J: 4 s (--over-cap-ttft)
 
 # retry_after
 KV_RETRY_S = 5.0                 # kv_free: KV frees as running requests finish
@@ -61,6 +61,28 @@ TARGET = "WorkerA"               # default worker when a caller does not name on
 # sheds go to the overflow gate instead of a 429; the gate's limiter decides, and over the
 # limit the request still gets the 429. Batch over_cap is unchanged.
 CAPACITY_OVERFLOW = {("interactive", "over_cap")}
+
+
+# Run J settings (Pavithra's three open decisions after run I). The constants above stay run I's
+# values; the gateway applies these only when its flags ask for it.
+RUN_I_SETTINGS = {"over_cap_ttft_s": OVER_CAP_TTFT_S, "tenant_window_scale": 1.0, "base_ttft_s": BASE_TTFT_S}
+RUN_J_SETTINGS = {"over_cap_ttft_s": 4.0, "tenant_window_scale": 2.0, "base_ttft_s": 0.0}
+_BASE_WINDOWS = dict(TENANT_WINDOW_TOKENS)
+
+
+def apply_settings(over_cap_ttft_s: float = OVER_CAP_TTFT_S, tenant_window_scale: float = 1.0,
+                   base_ttft_s: float = BASE_TTFT_S) -> dict:
+    """Set the interactive over_cap trigger, the tenant-window scale and the backlog floor.
+
+    The scale multiplies run I's per-worker windows (400,000 and 150,000), not the current ones,
+    so a second call does not compound. Returns the active values, for the run log.
+    """
+    global OVER_CAP_TTFT_S, TENANT_WINDOW_TOKENS, BASE_TTFT_S
+    OVER_CAP_TTFT_S = float(over_cap_ttft_s)
+    TENANT_WINDOW_TOKENS = {t: int(v * tenant_window_scale) for t, v in _BASE_WINDOWS.items()}
+    BASE_TTFT_S = float(base_ttft_s)
+    return {"over_cap_ttft_s": OVER_CAP_TTFT_S, "tenant_window_scale": float(tenant_window_scale),
+            "tenant_window_tokens": dict(TENANT_WINDOW_TOKENS), "base_ttft_s": BASE_TTFT_S}
 
 
 def overflow_instead(tenant: str, reason: str) -> bool:

@@ -32,6 +32,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, PlainTextResponse, Response, StreamingResponse
 
 from cluster.warm import probe_worker
+import control.admit as admit
 from control.admit import AdmitRequest, est_ttft, overflow_instead, should_shed
 from control.guard import TENANTS, count_prompt_tokens, inspect
 from control.hop import HopLog
@@ -369,12 +370,16 @@ def main():
                         help="prefix_then_load: hop when the home has this many in flight; env LOAD_BOUND")
     parser.add_argument("--max-in-flight", type=int, default=DEFAULT_MAX_IN_FLIGHT, help="seats per worker (the engine's --max-num-seqs)")
     parser.add_argument("--tenant-window-scale", type=float, default=1.0,
-                        help="test lever: multiply both tenant windows (run F uses a large value to isolate kv_free)")
+                        help="multiply both tenant windows (run F: a large value to isolate kv_free; run J: 2)")
+    parser.add_argument("--over-cap-ttft", type=float, default=admit.OVER_CAP_TTFT_S,
+                        help="interactive over_cap trigger in seconds (run I: 2; run J: 4)")
+    parser.add_argument("--base-ttft", type=float, default=admit.BASE_TTFT_S,
+                        help="prefill-backlog floor in the estimate, seconds (run I: 0.4; run J: 0 = removed)")
     args = parser.parse_args()
-    if args.tenant_window_scale != 1.0:
-        import control.admit as admit
-        admit.TENANT_WINDOW_TOKENS = {t: int(v * args.tenant_window_scale) for t, v in admit.TENANT_WINDOW_TOKENS.items()}
-        print(f"tenant windows scaled x{args.tenant_window_scale}: {admit.TENANT_WINDOW_TOKENS}", flush=True)
+    settings = admit.apply_settings(args.over_cap_ttft, args.tenant_window_scale, args.base_ttft)
+    print(f"admit settings: {settings}", flush=True)
+    args.out_dir.mkdir(parents=True, exist_ok=True)
+    (args.out_dir / "admit_settings.json").write_text(json.dumps(settings, indent=2) + "\n")
     overflow = json.loads(args.overflow.read_text()).get("Overflow") if args.overflow.exists() else None
     app = create_app(json.loads(args.workers.read_text()), args.out_dir, overflow, args.policy, args.max_in_flight,
                      args.load_bound)

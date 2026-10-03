@@ -160,3 +160,49 @@ def test_retry_after_jitter_range():
     retries = {should_shed(interactive(), s, rng=rng)[3] for _ in range(200)}
     assert min(retries) >= 5.0 * 0.7 and max(retries) <= 5.0 * 1.3
     assert len(retries) > 50                      # it really varies
+
+
+# ---- run J settings: each is off by default, so run I's values stay ----
+
+@pytest.fixture
+def run_i_after():
+    from control.admit import RUN_I_SETTINGS, apply_settings
+    yield apply_settings
+    apply_settings(**RUN_I_SETTINGS)
+
+
+def test_run_j_defaults_are_run_i_values():
+    import control.admit as admit
+    assert admit.OVER_CAP_TTFT_S == 2.0 and admit.BASE_TTFT_S == 0.4
+    assert admit.TENANT_WINDOW_TOKENS == {"interactive": 400_000, "batch": 150_000}
+
+
+def test_run_j_over_cap_trigger_4s(run_i_after):
+    s = snap(queue=6, rate=2.0, in_flight=32)              # seats full, est 3.15 s
+    assert shed(interactive(), s)[2] == "over_cap"         # run I: 3.15 s > 2 s
+    run_i_after(over_cap_ttft_s=4.0)
+    assert shed(interactive(), s)[2] == "ok"               # run J: 3.15 s < 4 s
+    assert shed(interactive(), snap(queue=8, rate=2.0, in_flight=32))[2] == "over_cap"   # 4.15 s > 4 s
+
+
+def test_run_j_tenant_windows_x2(run_i_after):
+    from control.admit import tenant_window
+    two = snap(tokens={"batch": 299_000}, events={"batch": ((NOW - 50, 299_000),)})
+    two.warm["WorkerB"] = True                             # two warm workers: batch window 300,000
+    assert shed(batch(), two)[2] == "tenant_tokens"
+    info = run_i_after(tenant_window_scale=2.0)
+    assert info["tenant_window_tokens"] == {"interactive": 800_000, "batch": 300_000}
+    assert tenant_window(two, "batch") == 600_000 and tenant_window(two, "interactive") == 1_600_000
+    assert shed(batch(), two)[2] == "ok"
+    run_i_after(tenant_window_scale=2.0)                   # a second call does not compound
+    assert tenant_window(two, "batch") == 600_000
+
+
+def test_run_j_base_ttft_floor_removed(run_i_after):
+    idle = snap()                                          # nothing waiting, nothing queued
+    assert est_ttft(idle, "WorkerA") == pytest.approx(0.4)   # run I: the backlog floor wins
+    run_i_after(base_ttft_s=0.0)
+    assert prefill_backlog(idle, "WorkerA") == 0.0
+    assert est_ttft(idle, "WorkerA") == pytest.approx(0.15)  # run J: Little's law idle TTFT (baseline A 153 ms)
+    s = snap(waiting=10, rate=100.0, uncached=4096)        # backlog alone: 10 x 0.85 = 8.5 s
+    assert est_ttft(s, "WorkerA") == pytest.approx(8.5)

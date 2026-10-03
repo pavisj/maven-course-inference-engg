@@ -22,7 +22,9 @@ USERS="${USERS:-48}"
 POLICY="${PLACE_POLICY:-${POLICY:-prefix_then_load}}"   # PLACE_POLICY=least_loaded|p2c|prefix_then_load
 LOAD_BOUND="${LOAD_BOUND:-22}"                          # prefix_then_load hops at this many in flight
 MAX_IN_FLIGHT="${MAX_IN_FLIGHT:-32}"
-TENANT_SCALE="${TENANT_SCALE:-1}"         # test lever: multiplies both tenant windows (1 = as designed)
+TENANT_SCALE="${TENANT_SCALE:-1}"         # multiplies both tenant windows (1 = run I; run J: 2)
+OVER_CAP_TTFT="${OVER_CAP_TTFT:-2.0}"     # interactive over_cap trigger, seconds (run I: 2; run J: 4)
+BASE_TTFT="${BASE_TTFT:-0.4}"             # prefill-backlog floor in the estimate, seconds (run I: 0.4; run J: 0)
 WARM_WAIT="${WARM_WAIT:-600}"
 GATEWAY="http://127.0.0.1:8765"
 
@@ -32,7 +34,7 @@ echo "$RUN start $(date -u +%Y-%m-%dT%H:%M:%SZ): $MIXES, $USERS users, $DURATION
 
 # 1. gateway
 "$PY" -m control.gateway --workers "$WORKERS" --out-dir "$OUT" --policy "$POLICY" --load-bound "$LOAD_BOUND" --max-in-flight "$MAX_IN_FLIGHT" \
-  --tenant-window-scale "$TENANT_SCALE" >> "$LOG" 2>&1 &
+  --tenant-window-scale "$TENANT_SCALE" --over-cap-ttft "$OVER_CAP_TTFT" --base-ttft "$BASE_TTFT" >> "$LOG" 2>&1 &
 GATEWAY_PID=$!
 SCRAPE_PID=""
 trap 'kill -TERM $SCRAPE_PID $GATEWAY_PID 2>/dev/null || true' EXIT
