@@ -171,7 +171,9 @@ class SnapshotSource:
             q.popleft()
         if len(q) < COMPLETION_MIN_SEEN:        # too few completions to measure: use the seed
             return COMPLETION_SEED
-        span = max(COMPLETION_MIN_SPAN_S, min(COMPLETION_WINDOW_S, now - self.start))
+        # span from the oldest completion in the window, not from gateway start: run I showed that idle time
+        # before traffic (the warm-up wait) made the rate look low and caused 20 false timeout_queue sheds
+        span = max(COMPLETION_MIN_SPAN_S, min(COMPLETION_WINDOW_S, now - q[0]))
         return max(COMPLETION_FLOOR, len(q) / span)
 
     def hit_rate(self) -> float | None:

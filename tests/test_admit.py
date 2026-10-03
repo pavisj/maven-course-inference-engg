@@ -141,7 +141,17 @@ def test_tenant_refund_and_completion_seed():
     assert src.completion_rate("WorkerA", now=src.start + 1) == COMPLETION_SEED   # no completions yet
     for i in range(30):
         src.record_completion("WorkerA", src.start + 1 + i * 0.5)
-    assert src.completion_rate("WorkerA", now=src.start + 16) == pytest.approx(30 / 16)
+    assert src.completion_rate("WorkerA", now=src.start + 16) == pytest.approx(30 / 15)   # span from the first completion
+
+
+def test_completion_rate_ignores_idle_time_before_traffic():
+    from control.snapshot import SnapshotSource
+    src = SnapshotSource({"WorkerA": "http://127.0.0.1:1"})
+    start = src.start + 12.0                       # 12 s of warm-up wait with no traffic (run I)
+    for i in range(12):
+        src.record_completion("WorkerA", start + i * 0.25)     # 12 completions in 3 s = 4 per second
+    rate = src.completion_rate("WorkerA", now=start + 3.0)
+    assert rate == pytest.approx(12 / 5.0)         # span floor 5 s; was 12 / 15 = 0.8 per second
 
 
 def test_retry_after_jitter_range():
