@@ -1,0 +1,59 @@
+{
+  "worker": "WorkerA",
+  "url": "https://pavithra-sj--tutor-cluster-workera.us-east.modal.direct",
+  "model": "tutor",
+  "model_root": "Qwen/Qwen2.5-3B-Instruct",
+  "run_id": "20261003-140924",
+  "ttft_s": [
+    0.825,
+    0.8146,
+    0.9322,
+    0.9306,
+    0.8463
+  ],
+  "engine_ttft_s": [
+    0.0603,
+    0.0287,
+    0.027,
+    0.0268,
+    0.0277
+  ],
+  "requests": [
+    {
+      "request": 1,
+      "ttft_s": 0.825,
+      "engine_ttft_s": 0.0603,
+      "prefix_cache_hits": 0,
+      "prompt_tokens": 495
+    },
+    {
+      "request": 2,
+      "ttft_s": 0.8146,
+      "engine_ttft_s": 0.0287,
+      "prefix_cache_hits": 480,
+      "prompt_tokens": 495
+    },
+    {
+      "request": 3,
+      "ttft_s": 0.9322,
+      "engine_ttft_s": 0.027,
+      "prefix_cache_hits": 480,
+      "prompt_tokens": 495
+    },
+    {
+      "request": 4,
+      "ttft_s": 0.9306,
+      "engine_ttft_s": 0.0268,
+      "prefix_cache_hits": 480,
+      "prompt_tokens": 495
+    },
+    {
+      "request": 5,
+      "ttft_s": 0.8463,
+      "engine_ttft_s": 0.0277,
+      "prefix_cache_hits": 480,
+      "prompt_tokens": 495
+    }
+  ],
+  "label": "baseline_a"
+}

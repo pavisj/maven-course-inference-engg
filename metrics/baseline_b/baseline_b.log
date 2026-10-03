@@ -1,0 +1,43 @@
+rehearsal start 2026-10-03T08:40:19Z: workers cluster/workers.json, 240 s per mix, 48 users
+WorkerA /health -> 200
+WorkerB /health -> 200
+unique: 48 users for 240 s -> https://pavithra-sj--tutor-cluster-workera.us-east.modal.direct
+927 requests, 927 ok, 0 failed
+TTFT p50 4462 ms, p95 5402 ms (laptop-measured, includes network)
+prompt tokens median 2122, output tokens median 168
+  tenant interactive: 927 requests
+wrote metrics/baseline_b/traffic_unique.jsonl
+shared_chapter: 48 users for 240 s -> https://pavithra-sj--tutor-cluster-workera.us-east.modal.direct
+1234 requests, 1234 ok, 0 failed
+TTFT p50 3230 ms, p95 4354 ms (laptop-measured, includes network)
+prompt tokens median 2185, output tokens median 170
+  tenant interactive: 1234 requests
+wrote metrics/baseline_b/traffic_shared_chapter.jsonl
+mixed: 48 users for 240 s -> https://pavithra-sj--tutor-cluster-workera.us-east.modal.direct
+1071 requests, 1071 ok, 0 failed
+TTFT p50 3787 ms, p95 4629 ms (laptop-measured, includes network)
+prompt tokens median 2042, output tokens median 226
+  tenant batch: 535 requests
+  tenant interactive: 536 requests
+wrote metrics/baseline_b/traffic_mixed.jsonl
+scraping WorkerA, WorkerB every 5 s -> metrics/baseline_b/scrape_baseline_b.jsonl
+stopped after 152 scrapes; wrote metrics/baseline_b/scrape_baseline_b.jsonl
+
+=== WorkerA  https://pavithra-sj--tutor-cluster-workera.us-east.modal.direct
+  req 1: TTFT    804 ms laptop,   63.4 ms engine, prefix hits     0 of 495 prompt tokens
+  req 2: TTFT    892 ms laptop,   27.0 ms engine, prefix hits   480 of 495 prompt tokens
+  req 3: TTFT    920 ms laptop,   27.8 ms engine, prefix hits   480 of 495 prompt tokens
+  req 4: TTFT    770 ms laptop,   26.8 ms engine, prefix hits   480 of 495 prompt tokens
+  req 5: TTFT    857 ms laptop,   27.6 ms engine, prefix hits   480 of 495 prompt tokens
+  request 1 vs 5: 804 ms -> 857 ms (laptop)
+  saved metrics/baseline_b/warmup_WorkerA_baseline_b.json
+
+=== WorkerB  https://pavithra-sj--tutor-cluster-workerb.us-east.modal.direct
+  req 1: TTFT    950 ms laptop,   83.7 ms engine, prefix hits    16 of 495 prompt tokens
+  req 2: TTFT    772 ms laptop,   25.9 ms engine, prefix hits   480 of 495 prompt tokens
+  req 3: TTFT    800 ms laptop,   26.4 ms engine, prefix hits   480 of 495 prompt tokens
+  req 4: TTFT    771 ms laptop,   26.3 ms engine, prefix hits   480 of 495 prompt tokens
+  req 5: TTFT    918 ms laptop,   26.6 ms engine, prefix hits   480 of 495 prompt tokens
+  request 1 vs 5: 950 ms -> 918 ms (laptop)
+  saved metrics/baseline_b/warmup_WorkerB_baseline_b.json
+rehearsal end 2026-10-03T08:53:50Z
