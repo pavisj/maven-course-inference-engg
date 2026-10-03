@@ -10,8 +10,8 @@ can still be reused, as in real traffic), so a second run cannot look warm only 
 the prefix cache.
 
 Engine TTFT per probe = change in vllm:time_to_first_token_seconds_sum / _count around it.
-A worker is warm when its last probe's engine TTFT is within 20 % of baseline A's engine
-mean (0.15 s), i.e. at most WARM_TTFT_S. The gateway imports probe_worker() and runs it at
+A worker is warm when its last probe's engine TTFT is within 20 % of the warm-probe reference
+(0.176 s, the same probes on warm workers), i.e. at most WARM_TTFT_S = 0.211 s. The gateway imports probe_worker() and runs it at
 start and after a worker restarts.
 """
 
@@ -38,9 +38,12 @@ PROBES = [                                   # (chapter group, question): one pe
     ("07", "How does Little's Law apply to admission control?"),
     ("10", "What is a cold start and how do you warm a replica?"),
 ]
-BASELINE_ENGINE_TTFT_S = 0.15                # baseline A engine TTFT mean, 153 ms (metrics/baseline_a)
-TOLERANCE = 0.20                             # warm = within 20 % of the baseline
-WARM_TTFT_S = BASELINE_ENGINE_TTFT_S * (1 + TOLERANCE)
+BASELINE_ENGINE_TTFT_S = 0.15                # baseline A engine TTFT mean, 153 ms: traffic WITH prefix-cache hits
+WARM_PROBE_TTFT_S = 0.176                    # the same 5 probes on warm workers, last probe (run E: 175 and 176 ms)
+TOLERANCE = 0.20                             # warm = within 20 % of the warm-probe reference
+WARM_TTFT_S = WARM_PROBE_TTFT_S * (1 + TOLERANCE)   # 0.211 s
+# Why not 0.15 x 1.2 = 0.18 s: each probe prefills about 1,600 uncached tokens, so a warm worker
+# measures 175 to 193 ms and sat 3 % under 0.18 s. Cold first probes measure 1,007 and 1,026 ms.
 MAX_TOKENS = 8                               # probes only need the first token
 
 
