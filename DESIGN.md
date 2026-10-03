@@ -132,6 +132,94 @@ Interactive questions measured: Little's Law and admission control; why prefix c
 
 ## Part 3. Guardrails, admit, stay vs leave
 
+_Step 4. Code: `control/guard.py`, `control/admit.py`, `control/snapshot.py`, `control/gateway.py`. Tests: `tests/`. Run: `metrics/run_c/`._
+
+### Where it runs
+
+`control/gateway.py` listens on 127.0.0.1:8765 only (see Part 2, Security). Every request goes guard → admit → worker A. Step 4 has no placement and no gateway queue, so `queue_depth` is 0 and every admitted request goes to worker A. The tenant comes from the `X-Tenant` header.
+
+### Guard: the first no (`inspect(payload, tenant)`)
+
+| Order | Reason | Code | Rule | Constant and source |
+|---|---|---|---|---|
+| 1 | `bad_body` | 400 | `messages` is a non-empty list of `{role, content}`; `max_tokens`, if present, is a positive integer | none |
+| 2 | `unknown_tenant` | 400 | `X-Tenant` is `interactive` or `batch` | tenants: decision 6 |
+| 3 | `prompt_too_long` | 400 | prompt_tokens + max_tokens ≤ 8,192 | 8,192 = `--max-model-len` (Part 1) |
+| 4 | `max_tokens_too_large` | 400 | max_tokens ≤ 512 interactive, ≤ 256 batch | 512 and 256: decision 6 |
+
+- `prompt_tokens` is counted with the Qwen chat template, as the engine counts it. Check: the guard counted 1,946 tokens, and vLLM reported 1,946 prompt tokens for the same request.
+- A request without `max_tokens` gets its tenant's budget. Otherwise vLLM would allow the rest of the 8,192-token context.
+
+### Admit: should it enter the engine now? (`should_shed(req, snap)`)
+
+The tests run in this order; the first match wins. Every shed is a 429 with a `Retry-After` header.
+
+| Order | Reason | Shed when | Constants and source | retry_after |
+|---|---|---|---|---|
+| 1 | `tenant_tokens` | tenant tokens in the last 60 s + (prompt_tokens + max_tokens) > window | interactive 400,000, batch 150,000. Baseline B `mixed` charged 337,306 interactive and 290,105 batch tokens per minute. 400,000 gives interactive about 19 % headroom; 150,000 holds batch to about half its demand. | seconds until enough old charges leave the 60 s window |
+| 2 | `timeout_queue` | est_ttft > deadline | deadline: interactive 6.0 s (above baseline B's worst laptop TTFT p95, 5,391 ms), batch 60.0 s | min(10, est_ttft − deadline + 1) |
+| 3 | `kv_free` | kv_usage_pct + ceil((prompt_tokens + max_tokens) / 16) / 24,876 × 100 > 85 | 16 = vLLM `block_size`; 24,876 = vLLM `num_gpu_blocks` = 398,016 KV tokens / 16 (Part 1); 85 % keeps 15 % free for decode growth (baseline B peaked at 14.5 %) | 5 s |
+| 4 | `over_cap` | running + queue_depth ≥ 32 and est_ttft > 2.0 s | 32 = `--max-num-seqs` (Part 1); 2.0 s: in baseline B `mixed`, est_ttft passes 2 s at about 13 waiting requests | min(10, est_ttft − deadline + 1), floored at 1 s |
+
+**est_ttft** = (waiting + queue_depth) × avg_uncached_prompt_tokens / 4,096 × 0.85 + 0.4 seconds.
+
+- 4,096 = `--max-num-batched-tokens`: prefill tokens per engine step (Part 1).
+- 0.85 s per full step: assumed. Baseline B implies 1.04 s (`unique`), 1.50 s (`mixed`) and 2.67 s (`shared_chapter`) per step. See "Gaps" below.
+- 0.4 s: TTFT with nothing waiting. Baseline A engine TTFT mean was 120 to 216 ms, plus margin.
+- avg_uncached_prompt_tokens = mean prompt tokens of admitted requests (last 60 s) × (1 − prefix hit rate over the last 30 s of scrapes). Default 1,200 (Part 1: 1,173 to 1,920 uncached tokens) until both exist.
+- waiting comes from worker A's `/metrics`, refreshed every 2 s, so it can be up to 2 s old. Tenant tokens and queue depth are exact at the moment of the decision.
+
+**Change to the spec:** for `over_cap`, est_ttft is usually below the deadline, so min(10, est_ttft − deadline + 1) is negative. Retry-After must be at least 0, so retry_after is clamped to 1 to 10 s.
+
+### Stay vs leave
+
+Every shed in Step 4 is a 429: the request stays and may try here again after `retry_after_seconds`. Nothing overflows to another model yet. The guard's 400s are final. The traffic runner honours Retry-After: after a 429, a user waits `retry_after_seconds` before its next request.
+
+### Tests (`pytest tests/`, 15 pass)
+
+- Guard: one test per reason (`bad_body`, `unknown_tenant`, `prompt_too_long`, `max_tokens_too_large`), a pass with a correct token count, and the default `max_tokens` per tenant.
+- Admit, with a fake snapshot: one test per reason (`tenant_tokens` with a 10 s retry, `timeout_queue` at est_ttft 7.87 s, `kv_free` at 84.5 %, `over_cap` at 32 running and 13 waiting).
+- A 2,100-token interactive request passes on an idle snapshot.
+- `kv_free` does not fire at 14.5 % KV usage, the baseline B peak.
+- Order: a request over its tenant window and past its deadline is shed as `tenant_tokens`. Batch is not shed by the interactive deadline. `over_cap` needs both of its conditions.
+
+### Run C: 48 users, `mixed`, 4 minutes, through the gateway (`metrics/run_c/`)
+
+| | Baseline B `mixed` (no gateway) | Run C (gateway) |
+|---|---|---|
+| Requests sent | 1,071 | 1,286 |
+| Admitted and answered | 1,071 | 758 (interactive 494, batch 264) |
+| Shed: `tenant_tokens` | n/a | 248 (all batch) |
+| Shed: `over_cap` | n/a | 280 (interactive 149, batch 131) |
+| Shed: `timeout_queue`, `kv_free` | n/a | 0, 0 |
+| Guard rejects | n/a | 0 |
+| Laptop TTFT p50 / p95 | 3,787 ms / 4,629 ms | 2,394 ms / 5,820 ms |
+| Gateway TTFT p50 / p95 | n/a | 2,352 ms / 5,613 ms (interactive 1,990 / 4,396; batch 3,089 / 6,554) |
+| Engine TTFT mean | 3,002 ms | 2,028 ms |
+| Max waiting in vLLM | 16 | 16 |
+| Mean waiting during the run | 12.2 | 4.8 |
+| Max KV usage | 10.8 % | 12.5 % |
+| Preemptions | 0 | 0 |
+| Prefix hit rate | 69.7 % | 67.0 % |
+
+### Engine-side vs laptop-side TTFT
+
+| Run | Laptop p50 / p95 | Gateway p50 / p95 | Engine mean | Engine p50 / p95 (histogram) |
+|---|---|---|---|---|
+| Baseline A, 8 users, direct | 906 ms / 1,063 ms | n/a | 153 ms | no buckets saved |
+| Run C, 48 users, gateway | 2,394 ms / 5,820 ms | 2,352 ms / 5,613 ms | 2,028 ms | about 1,886 ms / 4,981 ms |
+
+- Run C's engine percentiles are interpolated inside vLLM's histogram buckets, which are 1.0, 2.5, 5.0 and 7.5 s wide in this range: treat them as rough.
+- The laptop adds about 40 ms to the gateway's number (localhost). The gateway adds about 470 ms to the engine's p50: the round trip from India to Modal us-east.
+- Baseline A's 750 ms gap between laptop p50 and engine mean is the same network, with nothing waiting in the engine.
+
+### Gaps run C shows (**verify** each in Step 5)
+
+1. **est_ttft underestimates by about 3×.** At decision time its median was 0.65 s; the engine's real TTFT mean was 2.03 s. At 48 users a request waits for a decode slot to free, not for prefill. With a 67 % prefix hit rate the prefill part is small, but the slot wait is not. So `timeout_queue` never fired.
+2. **`over_cap` does not separate tenants.** It shed 149 interactive requests, 23 % of all interactive traffic.
+3. **p95 got worse while p50 got better.** Laptop p50 fell from 3,787 to 2,394 ms, but p95 rose from 4,629 to 5,820 ms. One possible cause: users shed by `over_cap` all wait the 1 s floor and come back together.
+4. **The engine view is up to 2 s old,** and `queue_depth` is 0 until Step 5 adds a queue.
+
 ## Part 4. Place
 
 ## Part 5. Queue
