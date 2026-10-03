@@ -166,7 +166,7 @@ def create_app(workers: dict[str, str], out_dir: Path, overflow_url: str | None 
                     await up.aclose()
                 on_done(outcome, out_tokens)
                 final = {**row, "decision": "aborted", "reason": "client_gone"} if outcome == "client_gone" else row
-                record(**final, ttft_measured=ttft, status=200, outcome=outcome, via=via, output_tokens=out_tokens,
+                record(**final, ttft_measured=ttft, status=499 if outcome == "client_gone" else 200, outcome=outcome, via=via, output_tokens=out_tokens,
                        total_s=round(time.perf_counter() - start, 4))
         headers = {VIA_HEADER: via} if via else {}
         headers.update(extra_headers or {})

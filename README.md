@@ -8,23 +8,54 @@ The full design, the numbers behind every constant, and the proof runs are in **
 
 ```mermaid
 flowchart LR
-  app["Tutor app<br/>app/tutor.py<br/>BM25 top 5 + prompt<br/>X-Tenant, X-Chapter"] --> gw
-  subgraph gw["Gateway · control/gateway.py · 127.0.0.1:8765"]
-    direction LR
-    guard["Guard<br/>400"] --> place["Place<br/>chapter home, hop"] --> admit["Admit<br/>429 or overflow"] --> queue["Queue<br/>32 seats per worker"] --> fwd["Forward<br/>stream"] --> gate["Overflow gate<br/>stay or leave"]
+  app["Tutor app<br/>app/tutor.py<br/>BM25 top 5 + prompt<br/>X-Tenant, X-Chapter"] --> guard
+  subgraph gateway["gateway · control/gateway.py · 127.0.0.1:8765 · scraped at GET /metrics (gateway_*)"]
+    direction TB
+    guard["guard<br/>400: bad_body, unknown_model, unknown_tenant,<br/>prompt_too_long, max_tokens_too_large<br/>metric: gateway_guard_rejects_total"]
+    place["place<br/>chapter map (home worker), load bound 22<br/>metric: gateway_placed_total, gateway_hops_total"]
+    admit["admit<br/>tenant windows, timeout_queue, kv_free, over_cap<br/>metric: gateway_sheds_total, gateway_est_ttft_seconds"]
+    queue["per-worker queue<br/>32 seats each, interactive first<br/>metric: gateway_queue_depth, gateway_in_flight"]
+    gate["overflow gate<br/>429/500 stay · 503/529 leave<br/>metric: gateway_overflow_total, gateway_retry_total"]
+    warmp["warm probe<br/>5 probes, last ≤ 0.211 s<br/>metric: gateway_worker_warm, gateway_affinity_evict_total"]
+    guard --> place --> admit --> queue --> gate
   end
-  fwd --> A["WorkerA · A10 · vLLM<br/>home: 00, 03a, 03b, 05"]
-  fwd --> B["WorkerB · A10 · vLLM<br/>home: 06, 06b, 07, 09, 10"]
-  A <-. "hop = recompute" .-> B
-  admit -. "capacity overflow (interactive over_cap)" .-> O["Overflow · A10<br/>Qwen2.5-1.5B, from zero<br/>10 per minute"]
-  gate -. "failure overflow (503/529)" .-> O
-  snap["Snapshot every 2 s<br/>vLLM /metrics + gateway counters"] -.-> admit
+  subgraph engine["engine · vLLM 0.21 on Modal · scraped at GET /metrics (vllm:*)"]
+    direction TB
+    A["WorkerA · A10 · Qwen2.5-3B<br/>waiting / running / preempt<br/>block table (PagedAttention), prefix cache"]
+    B["WorkerB · A10 · Qwen2.5-3B<br/>waiting / running / preempt<br/>block table (PagedAttention), prefix cache"]
+  end
+  O["Overflow · A10 · Qwen2.5-1.5B<br/>limiter 10 per minute, scale to zero<br/>metric: gateway_overflow_total{outcome}"]
+  gate -->|forward, stream| A
+  gate -->|forward, stream| B
+  A -. "hop record: hops.jsonl, backend=recompute" .- B
+  warmp -. "warm probe" .-> A
+  warmp -. "warm probe" .-> B
+  admit -. "capacity overflow: interactive over_cap" .-> O
+  gate -. "failure overflow: 503/529, after one retry" .-> O
+  scrape["scrape · control/scrape.py every 5 s<br/>snapshot · control/snapshot.py every 2 s"] -. "vllm:* metrics" .-> engine
+  scrape -. "gateway_* metrics" .-> gateway
 ```
+
+One line per box: the file that implements it, and the metric it emits.
+
+- **gateway** (`control/gateway.py`): the request path and `GET /metrics`; every request is a row in `gateway_requests.jsonl`.
+  - **guard** (`control/guard.py`): `gateway_guard_rejects_total{reason}`.
+  - **place** (`control/place.py`): `gateway_placed_total{worker}`, `gateway_hops_total{src,dst}`.
+  - **admit** (`control/admit.py`, estimate from `control/snapshot.py`): `gateway_sheds_total{reason}`, `gateway_est_ttft_seconds{worker}`, `gateway_tenant_tokens_60s{tenant}`.
+  - **per-worker queue** (`control/queue.py`): `gateway_queue_depth{worker}`, `gateway_in_flight{worker}`, `gateway_aborts_total{stage}`.
+  - **overflow gate** (`control/overflow.py`): `gateway_overflow_total{reason,outcome}`, `gateway_retry_total{src,dst}`.
+  - **warm probe** (`cluster/warm.py`, evict in `control/evict.py`): `gateway_worker_warm{worker}`, `gateway_affinity_evict_total`.
+- **engine** (`cluster/modal_vllm.py`, WorkerA and WorkerB): `vllm:num_requests_waiting`, `vllm:num_requests_running`, `vllm:num_preemptions_total`, `vllm:kv_cache_usage_perc`, `vllm:prefix_cache_hits_total`, `vllm:time_to_first_token_seconds`.
+- **Overflow** (`cluster/modal_vllm.py`, server `Overflow`): counted at the gateway, `gateway_overflow_total{reason,outcome}`; the requests carry `X-Via: overflow:qwen2.5-1.5b`.
+- **hop record** (dashed, `control/hop.py`): `metrics/<run>/hops.jsonl` and `metrics/hops.json`; nothing is copied, the destination recomputes the prefix.
+- **scrape** (`control/scrape.py`): `metrics/<run>/scrape_<run>.jsonl`, workers and gateway every 5 s.
+
+What each part decides:
 
 | Box | Code | What it decides |
 |---|---|---|
 | App | `app/` | retrieve 5 chunks (BM25), build the prompt, send `X-Tenant` and `X-Chapter` |
-| Guard | `control/guard.py` | 400 for a bad body, an unknown tenant, a prompt that is too long, or too many answer tokens |
+| Guard | `control/guard.py` | 400 for a bad body, an unknown model, an unknown tenant, a prompt that is too long, or too many answer tokens |
 | Place | `control/place.py` | the chapter's home worker, unless it is busy or not warm (then a hop) |
 | Admit | `control/admit.py` | 429 for `tenant_tokens`, `timeout_queue`, `kv_free`, `over_cap`; interactive `over_cap` may overflow |
 | Queue | `control/queue.py` | 32 seats per worker; request 33 waits here, interactive first |
@@ -92,21 +123,27 @@ Each folder in `metrics/` holds the traffic log (`traffic_*.jsonl`, one row per 
 | L | `metrics/run_l_guard/`, `metrics/run_l_abort/` | 12 guard deaths (0 engine calls); 10 of 20 clients close at 1.0 s |
 | M, M2 | `metrics/run_m/`, `metrics/run_m2/` | interactive deadline 3 s at 64 and 96 users: `timeout_queue` vs late answers |
 
+The addendum's "Run J: guard deaths and client abort" is run L here, and its "Run K" is runs M and M2: run J was already the three-decision run.
+
+Every run folder holds its scrape (`scrape_*.jsonl`), except `run_l_guard/`: its 12 requests take 0.1 s, so `summary.json` records each worker's vLLM counters before and after instead. Run L's abort part scrapes every 1 s (`scrape_1s.jsonl`).
+
+Cross-run files: `metrics/counts.md` (200, 429 by reason, 503, 400 and aborted per run; no run had a 503), `metrics/stories.md` (one real request per exit), `metrics/hops.json`, `metrics/evict_count.txt`.
+
 Other files in `metrics/`: `gpu_facts.json` and `worker_startup_log.txt` (Part 1), `warm_proof.json`, `overflow_check.json`, `network_offset.json`, `goodput.json`, `whatif.json`, `metric_names.txt`.
 
 ## Layout
 
-```
-app/        the tutor: ingest, BM25 retrieve, prompt, CLI
-control/    the gateway: guard, admit, place, queue, hop, overflow, snapshot, scrape
-cluster/    the engine on Modal, warm checks, cold start, probes
-traffic/    load generator (3 mixes) and run scripts
-tests/      pytest for guard, admit, place, queue, overflow
-metrics/    run data, summaries, goodput, what-if replay
-plots/      plots per run
-notebook/   analysis.ipynb, in the dashboard order
-DESIGN.md   the design, Parts 1 to 8
-```
+| Folder | What is in it |
+|---|---|
+| [`app/`](app/) | the tutor: ingest, BM25 retrieve, prompt, CLI |
+| [`control/`](control/) | the gateway: guard, admit, place, queue, hop, evict, overflow, snapshot, scrape |
+| [`cluster/`](cluster/) | the engine on Modal (`modal_vllm.py`), warm checks, cold start, probes |
+| [`DESIGN.md`](DESIGN.md) | the design, Parts 1 to 8 |
+| [`plots/`](plots/) | the eight dashboards `01_cluster` to `08_pods`, plus plots per run in `plots/<run>/` |
+| [`metrics/`](metrics/) | scrapes and logs per run, `hops.json`, `evict_count.txt`, `counts.md`, `stories.md`, goodput, what-if |
+| [`notebook/`](notebook/) | `analysis.ipynb`, in the dashboard order; one cell per Part 5 question |
+| [`traffic/`](traffic/) | load generator (3 mixes), run scripts, `run_l.py` |
+| [`tests/`](tests/) | pytest: guard, admit, place, queue, overflow, evict |
 
 ## Cost
 
