@@ -136,6 +136,21 @@ Interactive questions measured: Little's Law and admission control; why prefix c
 - **Limiter:** at most 10 overflow requests per minute (`control/overflow.py`). Above that the client gets the 503. Every overflow answer carries `X-Via: overflow:qwen2.5-1.5b`.
 - **Measured:** from zero, Overflow returned 503 for 137.7 s, then answered (`metrics/overflow_check.json`: 1,946 prompt tokens, 1.8 s laptop TTFT). So a cold Overflow cannot catch a sudden 503 burst; the gateway passes that 503 on with `X-Via` and counts `overflow_unavailable`.
 - **What stays:** 429, 500 and out-of-memory errors never leave. They are our own decisions or our own faults.
+- **Two kinds of overflow, one limiter** (Step 12):
+
+| | Failure overflow (Step 8) | Capacity overflow (Step 12) |
+|---|---|---|
+| Who decides | an engine: it answers 503 or 529 (or no worker is warm) | the gateway: admit says it is over capacity |
+| Trigger | 503, 529, or `no_warm_worker` | `over_cap` for an **interactive** request |
+| Path | the other worker once, then Overflow | straight to Overflow |
+| Over the limiter (10 per minute) | the 503 | the old 429 `over_cap` with retry_after |
+| Headers | `X-Via: overflow:qwen2.5-1.5b` | `X-Via: overflow:qwen2.5-1.5b`, `X-Overflow-Reason: over_cap` |
+| Metric | `gateway_overflow_total{reason="engine_503"\|"no_warm_worker", outcome}` | `gateway_overflow_total{reason="over_cap", outcome}` |
+
+  - Source for capacity overflow: the instructor's AMA whiteboard (~01:18): "any time there is a request overflow on the gateway itself, this goes directly to the Overflow."
+  - Batch `over_cap` stays a 429: batch can wait 60 s, so it never leaves.
+  - Overflowed requests still count against the tenant's token window, with the same refund of unused answer budget.
+  - If Overflow answers with an error, the gateway refunds the tokens and returns the 429 `over_cap` (outcome `failed`).
 
 ### Gateway and engine
 
@@ -311,6 +326,35 @@ Measured: in runs D, E and F, the gateway queue never held a request (max depth 
   - **Client gone:** no client left mid-stream in these runs (aborts 0). The path is tested: closing the upstream stream makes vLLM abort the request and free its blocks (Step 4 stub test, `client_gone`).
 - **Which saved memory on the shared-prefix mix?** PagedAttention packs every sequence into 16-token blocks, so KV grows with real length, not with `--max-model-len`. The prefix cache reuses blocks: 56 % to 66 % of prompt tokens were cache hits per worker in runs D to F, so those tokens took no new blocks. On this workload the prefix cache saved more: at 30 sequences, KV stayed at 31 % to 36 % of a halved cache.
 
+### Part 5 questions: Pavi's answers (Step 10b)
+
+> **10b · Q5.1 · Pavi to answer.** Who sits in **your** queue vs vLLM's **waiting** queue?
+> Evidence to paste: `gateway_queue_depth{worker}` and `vllm:num_requests_waiting` from `metrics/run_g/scrape_run_g.jsonl`; plot `plots/run_g/gateway_queue_by_worker.png`.
+
+> **10b · Q5.2 · Pavi to answer.** Waiting / running / swapped (or preempted)?
+> Evidence to paste: `metrics/run_f2/summary.json` (workers: max_running, max_waiting, preemptions); plot `plots/run_f2/preemptions.png`.
+
+> **10b · Q5.3 · Pavi to answer.** `orch_replica_queue_depth` (or your equivalent): which pod, under which mix?
+> Evidence to paste: `gateway_queue_depth{worker}` per run; `metrics/run_*/summary.json` (gateway_queue_max per worker); notebook section "Workers".
+
+> **10b · Q5.4 · Pavi to answer.** If a 32k RAG retrieve and a short agent decode are both ready, who goes first: you or the engine?
+> Evidence to paste: `control/queue.py` (priority order); run G gateway TTFT by tenant (`metrics/run_g/summary.json`).
+
+> **10b · Q5.5 · Pavi to answer.** PagedAttention packs KV; prefix / radix cache reuses KV. Which one saved memory on your shared-prefix mix?
+> Evidence to paste: prefix hit rate per worker (`metrics/run_h1/summary.json`, `metrics/run_h2/summary.json`); KV usage in runs F and F2.
+
+> **10b · Q5.6 · Pavi to answer.** Chunked prefill and continuous batching: which engine flags (`max-num-batched-tokens`, `max-num-seqs`) did you use, and why?
+> Evidence to paste: `ENGINE_ARGS` and `PROFILES` in `cluster/modal_vllm.py`; Part 1 of this file.
+
+> **10b · Q5.7 · Pavi to answer.** KV full after admit: do you shed at the door, or does the engine preempt?
+> Evidence to paste: run F2: 781 `kv_free` sheds and 15 preemptions (`metrics/run_f2/summary.json`); plot `plots/run_f2/kv_usage.png`.
+
+> **10b · Q5.8 · Pavi to answer.** Client gone (`aborted`): who frees the KV? And how?
+> Evidence to paste: `gateway_aborts_total{stage}`; `relay()` in `control/gateway.py`; `vllm:request_success_total{finished_reason="abort"}` in a scrape.
+
+> **10b · Q5.9 · Pavi to answer.** After a worker returns: slam it at 100 %, or ramp while p99 holds?
+> Evidence to paste: `metrics/warm_proof.json`; `metrics/run_e/warm_events.jsonl`; the warm gate in Part 6.
+
 ## Part 6. Hop and warm-up
 
 **Hop.** On Modal, containers do not share KV memory. A hop means the destination recomputes the prefix. Nothing is copied. The record proves where the recompute happened: `{ts, src: preferred, dst: chosen, tokens: prompt_tokens, prefix: chapter, backend: "recompute"}`, appended to `hops.jsonl` and counted in `gateway_hops_total{src,dst}`.
@@ -358,5 +402,46 @@ vLLM on Modal (WorkerA, WorkerB): waiting / running / preempt, prefix cache, chu
 - The baselines (A, B) skip the gateway on purpose: `--base-url` defaults to WorkerA.
 
 ## Part 8. Proof
+
+_Run data for every answer: `metrics/run_*/summary.json`, `metrics/goodput.json`, the notebook. The 13 answers below are Pavi's (Step 10b)._
+
+> **10b · Q8.1 · Pavi to answer.** What is the app, and which tokens are shared vs unique?
+> Evidence to paste: Part 1 "Real prompt length"; `app/prompt.py`.
+
+> **10b · Q8.2 · Pavi to answer.** What dies at guardrails vs admit vs place vs queue?
+> Evidence to paste: sheds by stage and reason in `metrics/run_*/summary.json`; the policy ledger in Part 7.
+
+> **10b · Q8.3 · Pavi to answer.** Where do I prevent work that will time out? (`timeout_queue`)
+> Evidence to paste: `should_shed` test 2 in `control/admit.py`; `QUEUE_DEADLINE_S` in `control/queue.py`; run G `timeout_queue` counts.
+
+> **10b · Q8.4 · Pavi to answer.** Where do I protect KV?
+> Evidence to paste: `kv_free` in `control/admit.py`; run F2.
+
+> **10b · Q8.5 · Pavi to answer.** Where do I prioritize interactive traffic? (`p99_spread`)
+> Evidence to paste: `PRIORITY` in `control/queue.py`; run G TTFT by tenant; capacity overflow in run I.
+
+> **10b · Q8.6 · Pavi to answer.** Where do I stop one tenant from owning the GPU?
+> Evidence to paste: `tenant_tokens` in `control/admit.py`; runs D and G.
+
+> **10b · Q8.7 · Pavi to answer.** Where do I hop, and what is not copied?
+> Evidence to paste: `control/hop.py`; `metrics/run_*/hops.jsonl`; Part 6.
+
+> **10b · Q8.8 · Pavi to answer.** Where do I evict, and what becomes a ghost if I skip it?
+> Evidence to paste: `cancel()` and `release()` in `control/queue.py`; `relay()` in `control/gateway.py`.
+
+> **10b · Q8.9 · Pavi to answer.** Where does the engine scheduler sit vs my admit / place / queue?
+> Evidence to paste: Part 7 diagram; `vllm:num_requests_waiting` vs `gateway_queue_depth` in run G.
+
+> **10b · Q8.10 · Pavi to answer.** What limited concurrency on this GPU for this app?
+> Evidence to paste: Part 1 "Expected first limiter"; runs B, G and F2.
+
+> **10b · Q8.11 · Pavi to answer.** Four production alerts you would set.
+> Evidence to paste: the "alert" column of the policy ledger in Part 7.
+
+> **10b · Q8.12 · Pavi to answer.** If I scale, which pool: prefill tokens or decode slots?
+> Evidence to paste: runs B, F and F2; Part 2 item 3.
+
+> **10b · Q8.13 · Pavi to answer.** What would I change at 10× traffic, and which three knobs are the wrong next move?
+> Evidence to paste: the what-if replay in Part 7; `metrics/goodput.json`.
 
 ## Submit
