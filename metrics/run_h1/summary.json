@@ -1,0 +1,100 @@
+{
+  "run": "run_h1",
+  "requests_sent": 2074,
+  "decisions": {
+    "ok": 1232,
+    "shed": 842
+  },
+  "sheds_by_reason_tenant": {
+    "interactive/over_cap": 33,
+    "interactive/tenant_tokens": 809
+  },
+  "sheds_by_stage": {
+    "admit": 842
+  },
+  "guard_rejects": {},
+  "leave": {},
+  "aborts": {
+    "queued": 0,
+    "in_flight": 0
+  },
+  "admitted_by_tenant": {
+    "interactive": 1232
+  },
+  "placed_by_worker": {
+    "WorkerB": 580,
+    "WorkerA": 652
+  },
+  "preferred_by_worker": {
+    "WorkerB": 1232
+  },
+  "hops": {
+    "total": 652,
+    "by_route": {
+      "WorkerB->WorkerA": 652
+    },
+    "tokens_recomputed": 1382112,
+    "share_of_admitted": 0.529
+  },
+  "gateway_ttft_ms": {
+    "all": {
+      "p50": 530,
+      "p95": 1887
+    },
+    "interactive": {
+      "p50": 530,
+      "p95": 1887
+    }
+  },
+  "est_vs_measured": {
+    "n": 1232,
+    "est_p50_s": 0.4,
+    "measured_p50_s": 0.53,
+    "measured_over_est_p50": 1.32,
+    "within_50pct": 0.788,
+    "queue_wait_p95_s": 0.007
+  },
+  "by_mix": {
+    "shared_chapter": {
+      "sent": 2074,
+      "admitted": 1232,
+      "shed": {
+        "tenant_tokens": 809,
+        "over_cap": 33
+      },
+      "hopped": 652,
+      "gateway_ttft_p50_ms": 530,
+      "gateway_ttft_p95_ms": 1887,
+      "laptop_ttft_p50_ms": 537,
+      "laptop_ttft_p95_ms": 1977
+    }
+  },
+  "workers": {
+    "WorkerA": {
+      "max_running": 26.0,
+      "max_waiting": 0.0,
+      "max_kv_pct": 10.0,
+      "preemptions": 0,
+      "prefix_hit_pct": 75.7,
+      "engine_ttft_mean_ms": 195,
+      "requests_seen": 652,
+      "gateway_queue_max": 2.0,
+      "gateway_queue_mean": 0.1,
+      "gateway_in_flight_max": 32.0,
+      "gateway_in_flight_mean": 16.8
+    },
+    "WorkerB": {
+      "max_running": 24.0,
+      "max_waiting": 0.0,
+      "max_kv_pct": 9.4,
+      "preemptions": 0,
+      "prefix_hit_pct": 74.1,
+      "engine_ttft_mean_ms": 210,
+      "requests_seen": 589,
+      "gateway_queue_max": 0.0,
+      "gateway_queue_mean": 0.0,
+      "gateway_in_flight_max": 24.0,
+      "gateway_in_flight_mean": 15.2
+    }
+  }
+}
