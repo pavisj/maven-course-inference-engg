@@ -243,6 +243,18 @@ Every shed in Step 4 is a 429: the request stays and may try here again after `r
 - **Admit runs after place,** on the chosen worker, because its queue, KV and waiting count are what matter. Place changes no state until admit passes.
 - **Every request logs est_ttft and the measured TTFT** (from arrival, so it includes the queue wait): `gateway_requests.jsonl`, plotted as `est_vs_measured_ttft.png`.
 
+### Fixes after runs D and E (Pavithra approved, 2026-10-03)
+
+| Problem seen | Fix | Constant and source |
+|---|---|---|
+| Run D: one-worker tenant windows on two workers shed 6,018 of 8,027 requests (`tenant_tokens`), with about 8 in flight per worker | The window is per warm worker: × the number of warm workers | 400,000 and 150,000 per worker: two warm workers give 800,000 and 300,000 |
+| Each request was charged its full answer budget (512 or 256); the median answer is about 170 tokens | Unused budget is refunded when the stream ends (from vLLM's `usage`); a request with no answer gets the whole budget back | none |
+| Run E: with no completions yet, the 0.5/s floor made 6 waiting requests look like 12 s; 14 false `timeout_queue` sheds in the first 7 s | The completion rate starts at a seed until 10 completions exist | 4.0 per second per worker: baseline B `mixed` completed 1,071 requests in 4.16 min = 4.3/s |
+| Run D: sub-second `tenant_tokens` retries made 8,027 requests for 2,005 admitted | 2 s floor on `tenant_tokens` retry_after, after the jitter | 2.0 s |
+| Warm line 0.18 s sat 3 % above warm workers' probes | Warm line 0.211 s (Part 6) | 0.176 s warm-probe reference × 1.2 |
+
+Run G (after the fixes): the estimate's median was within 5 % of the measured TTFT (0.82 s against 0.98 s).
+
 ## Part 4. Place
 
 `control/place.py`: `pick(req, workers, *, policy) -> Placement | Shed`. Default policy `prefix_then_load`; also `least_loaded` and `p2c`.
@@ -278,13 +290,25 @@ Measured (`metrics/run_d/summary.json`, `metrics/run_e/summary.json`):
 - **Who sits where:** your queue = the gateway queue (`gateway_queue_depth{worker}`). The engine's waiting queue = `vllm:num_requests_waiting`. With the 32-seat cap, vLLM waiting stayed at 0 to 2 in runs D and E.
 - **Who goes first:** the gateway decides the order between tenants. Inside the engine, vLLM's scheduler decides prefill chunks and decode steps; we do not change it.
 
-Measured: in runs D, E and F, the gateway queue never held a request (max depth 0).
+Measured: in runs D, E and F, the gateway queue never held a request (max depth 0). **Run G proves the queue.**
+
+- **Run G** (normal engine, 96 users, `mixed`, 4 min, after the Part 3 fixes): 2,747 requests, 1,317 admitted.
+  - The gateway queue held up to 8 requests per worker (mean 1.7 to 1.8); queue wait p95 2.19 s. vLLM's waiting queue stayed at 0: the waiting moved into the gateway, as designed.
+  - Interactive goes first: gateway TTFT interactive p50 716 ms, p95 2,172 ms; batch p50 1,369 ms, p95 4,850 ms.
+  - 3 requests left the queue at their deadline (429 `timeout_queue`, stage queue).
+  - The queue stops at 8 because `over_cap` sheds before it grows: batch at 8 waiting, and interactive when the seats are full and est_ttft > 2 s (568 interactive sheds).
+  - KV peaked at 12.9 %; no preemptions.
 
 - Runs D and E: the tenant windows held the load below 26 in flight per worker (Part 3), so there was nothing to queue.
 - **Run F** (pressure engine: `--gpu-memory-utilization 0.5`, `--max-num-seqs 64`; gateway 64 seats per worker; tenant windows ×10 so `tenant_tokens` cannot hide `kv_free`; 64 users, `mixed`, 3 min): 1,528 requests, all admitted, 0 sheds, 0 preemptions.
   - vLLM's KV shrank to 7,906 blocks = 126,496 tokens per worker (normal engine: 398,016).
   - KV usage peaked at 36.1 % (WorkerA) and 31.7 % (WorkerB); in flight averaged 30 per worker.
   - **The expected `kv_free` sheds did not happen.** 64 users split over two workers is about 32 per worker. `kv_free` fires at 85 % = about 107,500 tokens, about 44 sequences of 2,400 tokens on one worker, so about 90 users. The run proved the gateway admits a 64-seat engine without false sheds; it did not prove `kv_free`. A follow-up needs about 96 users (or one worker), and a second pressure deploy.
+- **Run F2** (second pressure deploy, approved: `--gpu-memory-utilization 0.4`, `--max-num-seqs 64`; 64 seats per worker; tenant windows ×10; 128 users, `mixed`, 3 min): 2,599 requests, 1,818 admitted, 781 shed by **`kv_free`** (389 batch, 392 interactive), 0 failures.
+  - vLLM's KV: 4,443 blocks = 71,088 tokens per worker.
+  - KV still peaked at 99.8 % (WorkerA) and 99.4 % (WorkerB); vLLM preempted 15 requests (7 and 8), and its waiting queue reached 22.
+  - **KV full after admit: the door sheds, and the engine preempts the rest.** `kv_free` reads KV usage up to 2 s old and counts only the new request's blocks, not the decode growth of requests already running. So it stopped 781 requests at the door, and 15 still had to be preempted inside the engine.
+  - **Client gone:** no client left mid-stream in these runs (aborts 0). The path is tested: closing the upstream stream makes vLLM abort the request and free its blocks (Step 4 stub test, `client_gone`).
 - **Which saved memory on the shared-prefix mix?** PagedAttention packs every sequence into 16-token blocks, so KV grows with real length, not with `--max-model-len`. The prefix cache reuses blocks: 56 % to 66 % of prompt tokens were cache hits per worker in runs D to F, so those tokens took no new blocks. On this workload the prefix cache saved more: at 30 sequences, KV stayed at 31 % to 36 % of a halved cache.
 
 ## Part 6. Hop and warm-up

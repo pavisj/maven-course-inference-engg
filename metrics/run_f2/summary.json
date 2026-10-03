@@ -1,0 +1,106 @@
+{
+  "run": "run_f2",
+  "requests_sent": 2599,
+  "decisions": {
+    "ok": 1818,
+    "shed": 781
+  },
+  "sheds_by_reason_tenant": {
+    "batch/kv_free": 389,
+    "interactive/kv_free": 392
+  },
+  "sheds_by_stage": {
+    "admit": 781
+  },
+  "guard_rejects": {},
+  "leave": {},
+  "aborts": {
+    "queued": 0,
+    "in_flight": 0
+  },
+  "admitted_by_tenant": {
+    "interactive": 908,
+    "batch": 910
+  },
+  "placed_by_worker": {
+    "WorkerA": 917,
+    "WorkerB": 901
+  },
+  "preferred_by_worker": {
+    "WorkerA": 873,
+    "WorkerB": 945
+  },
+  "hops": {
+    "total": 894,
+    "by_route": {
+      "WorkerA->WorkerB": 425,
+      "WorkerB->WorkerA": 469
+    },
+    "tokens_recomputed": 1836593,
+    "share_of_admitted": 0.492
+  },
+  "gateway_ttft_ms": {
+    "all": {
+      "p50": 863,
+      "p95": 3220
+    },
+    "interactive": {
+      "p50": 919,
+      "p95": 3103
+    },
+    "batch": {
+      "p50": 816,
+      "p95": 3533
+    }
+  },
+  "est_vs_measured": {
+    "n": 1818,
+    "est_p50_s": 0.4,
+    "measured_p50_s": 0.863,
+    "measured_over_est_p50": 2.15,
+    "within_50pct": 0.428,
+    "queue_wait_p95_s": 0.006
+  },
+  "by_mix": {
+    "mixed": {
+      "sent": 2599,
+      "admitted": 1818,
+      "shed": {
+        "kv_free": 781
+      },
+      "hopped": 894,
+      "gateway_ttft_p50_ms": 863,
+      "gateway_ttft_p95_ms": 3220,
+      "laptop_ttft_p50_ms": 873,
+      "laptop_ttft_p95_ms": 3973
+    }
+  },
+  "workers": {
+    "WorkerA": {
+      "max_running": 63.0,
+      "max_waiting": 22.0,
+      "max_kv_pct": 99.8,
+      "preemptions": 7.0,
+      "prefix_hit_pct": 62.1,
+      "engine_ttft_mean_ms": 661,
+      "requests_seen": 917,
+      "gateway_queue_max": 1.0,
+      "gateway_queue_mean": 0.0,
+      "gateway_in_flight_max": 64.0,
+      "gateway_in_flight_mean": 50.2
+    },
+    "WorkerB": {
+      "max_running": 64.0,
+      "max_waiting": 16.0,
+      "max_kv_pct": 99.4,
+      "preemptions": 8.0,
+      "prefix_hit_pct": 63.6,
+      "engine_ttft_mean_ms": 714,
+      "requests_seen": 901,
+      "gateway_queue_max": 0.0,
+      "gateway_queue_mean": 0.0,
+      "gateway_in_flight_max": 64.0,
+      "gateway_in_flight_mean": 49.9
+    }
+  }
+}
