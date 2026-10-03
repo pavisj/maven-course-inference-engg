@@ -17,6 +17,14 @@ def test_out_of_memory_text_stays_whatever_the_code():
     assert classify(503, b"no room at the inn") == "leave"   # "room" is not an OOM
 
 
+def test_capacity_overflow_is_interactive_over_cap_only():
+    from control.admit import overflow_instead
+    assert overflow_instead("interactive", "over_cap") is True
+    assert overflow_instead("batch", "over_cap") is False           # batch over_cap stays a 429
+    for reason in ("tenant_tokens", "timeout_queue", "kv_free"):
+        assert overflow_instead("interactive", reason) is False
+
+
 def test_limiter_ten_per_minute():
     lim = OverflowLimiter()
     assert all(lim.allow(now=100.0 + i) for i in range(10))

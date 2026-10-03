@@ -32,10 +32,11 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, PlainTextResponse, Response, StreamingResponse
 
 from cluster.warm import probe_worker
-from control.admit import AdmitRequest, est_ttft, should_shed
+from control.admit import AdmitRequest, est_ttft, overflow_instead, should_shed
 from control.guard import TENANTS, count_prompt_tokens, inspect
 from control.hop import HopLog
-from control.overflow import (STAY_RETRY_S, VIA_HEADER, VIA_NONE, VIA_OVERFLOW, OverflowLimiter, classify)
+from control.overflow import (OVERFLOW_REASON_HEADER, STAY_RETRY_S, VIA_HEADER, VIA_NONE, VIA_OVERFLOW,
+                              OverflowLimiter, classify)
 from control.place import DEFAULT_POLICY, LOAD_BOUND, POLICIES, PlaceRequest, Shed, pick, views_from_snapshot
 from control.queue import DEFAULT_MAX_IN_FLIGHT, WorkerQueue
 from control.snapshot import SnapshotSource, TenantWindow
@@ -134,7 +135,8 @@ def create_app(workers: dict[str, str], out_dir: Path, overflow_url: str | None 
         await up.aclose()
         return up.status_code, body, headers
 
-    def stream_out(up, row: dict, start: float, on_done, via: str | None = None) -> StreamingResponse:
+    def stream_out(up, row: dict, start: float, on_done, via: str | None = None,
+                   extra_headers: dict | None = None) -> StreamingResponse:
         async def relay():
             ttft, outcome, out_tokens = None, "ok", None
             try:
@@ -160,23 +162,25 @@ def create_app(workers: dict[str, str], out_dir: Path, overflow_url: str | None 
                 record(**row, ttft_measured=ttft, status=200, outcome=outcome, via=via, output_tokens=out_tokens,
                        total_s=round(time.perf_counter() - start, 4))
         headers = {VIA_HEADER: via} if via else {}
+        headers.update(extra_headers or {})
         return StreamingResponse(relay(), media_type="text/event-stream", headers=headers)
 
     async def leave(payload: dict, row: dict, start: float, status: int, body: bytes):
-        """The cluster answered 503/529: send the request to Overflow, under the limiter."""
+        """Failure overflow: the cluster answered 503/529 (or no worker is warm). Send it to Overflow, under the limiter."""
+        reason = "no_warm_worker" if row.get("reason") == "no_warm_worker" else "engine_503"
         if not overflow_url:
-            c["overflow"]["no_target"] += 1
+            c["overflow"][(reason, "failed")] += 1
             record(**row, status=503, outcome="leave_no_target", via=VIA_NONE)
             return Response(body or b"no leave target", status_code=503, headers={VIA_HEADER: VIA_NONE})
         if not limiter.allow():
-            c["overflow"]["limited"] += 1
+            c["overflow"][(reason, "limited")] += 1
             record(**row, status=status, outcome="leave_limited")
             return Response(body, status_code=status)
         result = await open_upstream(overflow_url, payload)
         if result[0] == "stream":
-            c["overflow"]["served"] += 1
+            c["overflow"][(reason, "sent")] += 1
             return stream_out(result[1], {**row, "worker": "Overflow"}, start, lambda outcome, out: None, via=VIA_OVERFLOW)
-        c["overflow"]["unavailable"] += 1
+        c["overflow"][(reason, "failed")] += 1
         record(**row, worker="Overflow", status=result[0], outcome="overflow_unavailable", via=VIA_OVERFLOW)
         return Response(result[1], status_code=result[0], headers={VIA_HEADER: VIA_OVERFLOW})
 
@@ -218,10 +222,35 @@ def create_app(workers: dict[str, str], out_dir: Path, overflow_url: str | None 
 
         # 3. admit, on the chosen worker
         shed, code, reason, retry = should_shed(AdmitRequest(tenant, guard.prompt_tokens, guard.max_tokens, worker), snap)
+        overflow_outcome = None
+        if shed and overflow_url and overflow_instead(tenant, reason):
+            # capacity overflow (Step 12): the gateway itself is over capacity -> Overflow, under the limiter
+            if limiter.allow():
+                ocharge = source.tenants.charge(tenant, guard.prompt_tokens + guard.max_tokens, t0)  # windows still count it
+                result = await open_upstream(overflow_url, payload)
+                orow = {**row, "decision": "overflow", "reason": reason, "stage": "admit", "worker": "Overflow",
+                        "overflow_outcome": "sent"}
+                if result[0] == "stream":
+                    c["overflow"][(reason, "sent")] += 1
+                    c["requests"][(tenant, "overflow")] += 1
+
+                    def refund(outcome, out_tokens, ocharge=ocharge):
+                        if out_tokens is not None:
+                            TenantWindow.refund(ocharge, guard.max_tokens - out_tokens)
+
+                    return stream_out(result[1], orow, start, refund, via=VIA_OVERFLOW,
+                                      extra_headers={OVERFLOW_REASON_HEADER: reason})
+                TenantWindow.refund(ocharge, guard.prompt_tokens + guard.max_tokens)
+                c["overflow"][(reason, "failed")] += 1
+                overflow_outcome = "failed"           # Overflow could not answer: fall back to the 429
+            else:
+                c["overflow"][(reason, "limited")] += 1
+                overflow_outcome = "limited"          # over 10 per minute: the old 429
         if shed:
             c["sheds"][reason] += 1
             c["requests"][(tenant, "shed")] += 1
-            record(**row, decision="shed", reason=reason, stage="admit", status=code, retry_after=retry)
+            record(**row, decision="shed", reason=reason, stage="admit", status=code, retry_after=retry,
+                   overflow_outcome=overflow_outcome)
             return JSONResponse({"reason": reason, "retry_after_seconds": retry}, status_code=code,
                                 headers={"Retry-After": str(max(1, math.ceil(retry)))})
         charge = source.tenants.charge(tenant, guard.prompt_tokens + guard.max_tokens, t0)
@@ -304,8 +333,8 @@ def create_app(workers: dict[str, str], out_dir: Path, overflow_url: str | None 
         L += [f'gateway_hops_total{{src="{s}",dst="{d}"}} {n}' for (s, d), n in sorted(hops.counts.items())]
         L += [f"gateway_hops_all_total {sum(hops.counts.values())}"]
         L += ["# TYPE gateway_overflow_total counter"]
-        L += [f'gateway_overflow_total{{outcome="{o}"}} {c["overflow"][o]}'
-              for o in ("served", "limited", "unavailable", "no_target")]
+        L += [f'gateway_overflow_total{{reason="{r}",outcome="{o}"}} {c["overflow"][(r, o)]}'
+              for r in ("over_cap", "engine_503", "no_warm_worker") for o in ("sent", "limited", "failed")]
         L += ["# TYPE gateway_placed_total counter"]
         L += [f'gateway_placed_total{{worker="{w}"}} {c["placed"][w]}' for w in workers]
         for name, metric in (("gateway_queue_depth", snap.queue_depth), ("gateway_in_flight", snap.in_flight),

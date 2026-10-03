@@ -1,4 +1,11 @@
-"""Overflow gate: after a worker answers, does the request stay or leave?
+"""Overflow gate: two kinds of overflow share this module and its limiter.
+
+- Failure overflow (Step 8): an engine answered 503/529 -> the other worker once, then Overflow.
+- Capacity overflow (Step 12): admit says the gateway itself is over capacity for an interactive
+  request (over_cap) -> Overflow instead of a 429, under the same limiter, with
+  X-Overflow-Reason: over_cap. Decided by the gateway, before any engine sees the request.
+
+Failure overflow: after a worker answers, does the request stay or leave?
 
 classify(status, body) -> "ok" | "stay" | "leave" | "other"
 - 200                                  -> ok:    stream it to the client
@@ -22,6 +29,7 @@ STAY_RETRY_S = 2.0                     # Retry-After for a "stay" response that 
 VIA_HEADER = "X-Via"
 VIA_OVERFLOW = "overflow:qwen2.5-1.5b"
 VIA_NONE = "overflow:none"             # no leave target is available
+OVERFLOW_REASON_HEADER = "X-Overflow-Reason"   # capacity overflow (Step 12): why the gateway sent it away
 OVERFLOW_PER_MIN = 10                  # limiter on requests sent to Overflow (Step 8)
 OVERFLOW_WINDOW_S = 60.0
 

@@ -56,6 +56,17 @@ JITTER = (0.7, 1.3)              # every retry_after x a random factor in this r
 
 TARGET = "WorkerA"               # default worker when a caller does not name one
 
+# Capacity overflow (Step 12; instructor's AMA whiteboard, ~01:18: "any time there is a request
+# overflow on the gateway itself, this goes directly to the Overflow"). These (tenant, reason)
+# sheds go to the overflow gate instead of a 429; the gate's limiter decides, and over the
+# limit the request still gets the 429. Batch over_cap is unchanged.
+CAPACITY_OVERFLOW = {("interactive", "over_cap")}
+
+
+def overflow_instead(tenant: str, reason: str) -> bool:
+    """True if this shed should go to the Overflow server instead of a 429."""
+    return (tenant, reason) in CAPACITY_OVERFLOW
+
 
 @dataclass(frozen=True)
 class AdmitRequest:
