@@ -69,6 +69,23 @@ def main(folder: Path) -> dict:
             "queue_wait_p95_s": round(pct([r.get("queue_wait_s") for r in ok], 95) or 0, 3),
         }
 
+    # overflow (Step 12 capacity overflow and Step 8 failure overflow)
+    ov = [r for r in gw if r["decision"] == "overflow"]
+    if ov or any(r.get("overflow_outcome") for r in gw):
+        sent = [r for r in ov if r.get("status") == 200]
+        ot = [r["ttft_measured"] for r in sent if r.get("ttft_measured") is not None]
+        ct = [r["ttft_measured"] for r in m if r["tenant"] == "interactive"]
+        out["overflow"] = {
+            "sent": len(sent),
+            "failed": sum(1 for r in gw if r.get("overflow_outcome") == "failed"),
+            "limited": sum(1 for r in gw if r.get("overflow_outcome") == "limited"),
+            "interactive_over_cap_429": sum(1 for r in gw if r["decision"] == "shed" and r["tenant"] == "interactive"
+                                            and r["reason"] == "over_cap"),
+            "overflow_ttft_ms": {"p50": ms(pct(ot, 50)), "p95": ms(pct(ot, 95))},
+            "cluster_interactive_ttft_ms": {"p50": ms(pct(ct, 50)), "p95": ms(pct(ct, 95))},
+            "overflow_prompt_tokens_median": statistics.median([r["prompt_tokens"] for r in sent]) if sent else None,
+        }
+
     # per mix (by time window of the traffic rows)
     mixes = {}
     for mix in sorted({r["mix"] for r in traffic}):
