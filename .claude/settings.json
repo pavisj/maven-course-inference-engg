@@ -4,7 +4,6 @@
   "permissions": {
     "deny": [
       "Bash(rm -rf *)",
-      "Bash(git push *)",
       "Bash(git reset *)",
       "Bash(modal app delete *)"
     ]
