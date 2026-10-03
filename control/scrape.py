@@ -2,6 +2,11 @@
 
     python -m control.scrape --run rehearsal --duration 1800
     python -m control.scrape --run test --out-dir metrics/rehearsal --interval 5
+    python -m control.scrape --run run_c --out-dir metrics/run_c --gateway http://127.0.0.1:8765
+
+--gateway adds the gateway as a target named "gateway". Its gateway_* series go into
+each row's "gateway" dict. Worker rows also keep the TTFT histogram buckets
+("ttft_buckets", {le: cumulative count}) for percentiles.
 
 Runs until --duration seconds pass or you press Ctrl-C.
 Writes <out-dir>/scrape_<run>.jsonl.
@@ -49,6 +54,9 @@ FIELDS = {
 }
 # also kept per label value, so aborted requests are visible
 BY_LABEL = {"request_success": "finished_reason"}
+# histogram buckets kept as {le: cumulative count}, so percentiles can be computed later
+BUCKETS = {"ttft_buckets": "vllm:time_to_first_token_seconds_bucket"}
+GATEWAY_PREFIX = "gateway_"      # the gateway's own series, kept as {"name{labels}": value}
 
 _SAMPLE = re.compile(r'^([^\s{]+)(?:\{([^}]*)\})?\s+(\S+)')
 _LABEL = re.compile(r'(\w+)="([^"]*)"')
@@ -98,6 +106,12 @@ def scrape_once(worker: str, url: str, fields: dict[str, str | None], run: str) 
         for field, label in BY_LABEL.items():
             name = fields.get(field)
             row[f"{field}_by_{label}"] = dict(by_label[name][label]) if name else None
+        for field, name in BUCKETS.items():
+            row[field] = dict(by_label[name]["le"]) if name in by_label else None
+        gateway = {line.rsplit(" ", 1)[0]: float(line.rsplit(" ", 1)[1])
+                   for line in r.text.splitlines() if line.startswith(GATEWAY_PREFIX)}
+        if gateway:
+            row["gateway"] = gateway
     except (httpx.HTTPError, ValueError) as e:
         row["error"] = f"{type(e).__name__}: {e}"[:200]
         for field in fields:
@@ -113,9 +127,12 @@ def main():
     parser.add_argument("--duration", type=float, default=None, help="stop after this many seconds")
     parser.add_argument("--run", default=time.strftime("%Y%m%d-%H%M%S"), help="run name in the file name")
     parser.add_argument("--out-dir", type=Path, default=ROOT / "metrics")
+    parser.add_argument("--gateway", default=None, help="also scrape the gateway's /metrics at this URL")
     args = parser.parse_args()
 
     workers = json.loads(args.workers.read_text())
+    if args.gateway:
+        workers["gateway"] = args.gateway
     fields = resolve_fields(args.names)
     args.out_dir.mkdir(parents=True, exist_ok=True)
     out = args.out_dir / f"scrape_{args.run}.jsonl"
