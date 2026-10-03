@@ -153,6 +153,55 @@ def ttft_by_mix(traffic, label, out_dir):
     print(f"wrote {out_dir / 'ttft_by_mix.png'}")
 
 
+def est_vs_measured(gateway_rows, label, out_dir):
+    rows = [r for r in gateway_rows if r.get("decision") == "ok" and r.get("est_ttft") is not None
+            and r.get("ttft_measured") is not None]
+    if not rows:
+        print("skip est_vs_measured_ttft: no admitted gateway rows")
+        return
+    fig, ax = plt.subplots(figsize=(6.5, 6))
+    colors = {"WorkerA": "#2457c5", "WorkerB": "#9a5b00", "Overflow": "#2f7d4f"}
+    for worker in sorted({r.get("worker") for r in rows}):
+        pts = [r for r in rows if r.get("worker") == worker]
+        ax.scatter([r["est_ttft"] for r in pts], [r["ttft_measured"] for r in pts], s=8, alpha=0.45,
+                   color=colors.get(worker, "#666666"), label=f"{worker} ({len(pts)})")
+    top = max(max(r["est_ttft"] for r in rows), max(r["ttft_measured"] for r in rows))
+    ax.plot([0, top], [0, top], color="#888888", linestyle="--", linewidth=1, label="estimate = measured")
+    ax.set_xlabel("est_ttft at the admit decision (s)")
+    ax.set_ylabel("TTFT measured at the gateway, from arrival (s)")
+    ax.set_title(title("Estimated vs measured TTFT", label))
+    ax.legend(fontsize=8)
+    ax.grid(alpha=0.3)
+    fig.tight_layout()
+    fig.savefig(out_dir / "est_vs_measured_ttft.png", dpi=120)
+    plt.close(fig)
+    print(f"wrote {out_dir / 'est_vs_measured_ttft.png'}")
+
+
+def gateway_queue(scrape, windows, label, out_dir):
+    rows = [r for r in scrape if r.get("worker") == "gateway" and r.get("ok") and r.get("gateway")]
+    if not rows:
+        print("skip gateway_queue_by_worker: no gateway scrape rows")
+        return
+    t0 = rows[0]["ts"]
+    fig, ax = plt.subplots(figsize=(10, 4))
+    shade(ax, windows, t0)
+    for worker, color in (("WorkerA", "#2457c5"), ("WorkerB", "#9a5b00")):
+        for series, style in (("gateway_queue_depth", "-"), ("gateway_in_flight", "--")):
+            key = f'{series}{{worker="{worker}"}}'
+            ax.plot([r["ts"] - t0 for r in rows], [r["gateway"].get(key, 0) for r in rows], style, color=color,
+                    label=f"{worker} {'queue' if series.endswith('depth') else 'in flight'}")
+    ax.set_xlabel("seconds since first scrape")
+    ax.set_ylabel("requests")
+    ax.set_title(title("Gateway queue depth and in flight, per worker", label), pad=18)
+    ax.legend(fontsize=8)
+    ax.grid(alpha=0.3)
+    fig.tight_layout()
+    fig.savefig(out_dir / "gateway_queue_by_worker.png", dpi=120)
+    plt.close(fig)
+    print(f"wrote {out_dir / 'gateway_queue_by_worker.png'}")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--run-dir", type=Path, default=ROOT / "metrics" / "rehearsal")
@@ -176,6 +225,10 @@ def main():
     ttft_by_mix(traffic, args.label, args.out_dir)
     time_series(scrape, "preemptions", "preemptions (cumulative)", "preemptions", "Preemptions over time",
                 args.label, windows, args.out_dir)
+    gateway_rows = load_jsonl(sorted(args.run_dir.glob("gateway_requests.jsonl")))
+    if gateway_rows:
+        est_vs_measured(gateway_rows, args.label, args.out_dir)
+        gateway_queue(scrape, windows, args.label, args.out_dir)
 
 
 if __name__ == "__main__":
