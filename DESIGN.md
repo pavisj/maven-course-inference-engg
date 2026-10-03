@@ -294,6 +294,26 @@ Measured (`metrics/run_d/summary.json`, `metrics/run_e/summary.json`):
 | D: 3 mixes, 48 users | 2,005 | 711 / 1,294 | 946 / 1,059 | 561 (28 %): B→A 398, A→B 163 |
 | E: chapter 07 only, 48 users | 305 | 0 / 305 | 147 / 158 | 147 (48 %): all B→A |
 
+### Run H: does prefix routing help?
+
+**Answer: prefix routing raised the prefix hit rate by 9.9 points (75.0 % → 84.9 %) and cut gateway TTFT p50 by 40 ms (530 → 490 ms) and p95 by 811 ms (1,887 → 1,076 ms).**
+
+Both runs: `shared_chapter` on chapter 07 (home: WorkerB), 48 users, 4 min, normal engine, both workers warm, tenant windows per warm worker. The policy and the bound are set at gateway start (`PLACE_POLICY`, `LOAD_BOUND`). `preferred` is always the chapter home, so "away from home" means the same thing in both runs.
+
+| | H1: `least_loaded` | H2: `prefix_then_load`, LOAD_BOUND 28 |
+|---|---|---|
+| Prefix hit rate, both workers | 75.0 % | 84.9 % |
+| Prefix hit rate A / B | 75.7 % / 74.1 % | 84.4 % / 85.2 % |
+| Hops (share of admitted) | 652 (53 %) | 579 (42 %) |
+| Prompt tokens recomputed away from home | 1,382,112 | 1,234,077 |
+| Gateway TTFT p50 / p95 | 530 / 1,887 ms | 490 / 1,076 ms |
+| Engine TTFT mean A / B | 195 / 210 ms | 136 / 136 ms |
+| Max in flight A / B | 32 / 24 | 20 / 28 |
+| Admitted / shed (`tenant_tokens`) | 1,232 / 809 (+33 `over_cap`) | 1,367 / 520 |
+
+- Why the gain is only 10 points: chapter 07 has 33 chunks, so even `least_loaded` soon has the whole chapter cached on both workers (75 % hit rate). Prefix routing keeps more of each request's 5-chunk set on one worker.
+- H2 still hopped 42 % of requests: 48 users on one chapter is more than the home's 28-seat bound, so the excess goes to WorkerA.
+
 ## Part 5. Queue
 
 `control/queue.py`: one queue per worker, in the gateway.
