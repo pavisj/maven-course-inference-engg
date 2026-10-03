@@ -8,6 +8,7 @@ app/chunks.jsonl
 # Live worker URLs: unauthenticated, so keep them out of a public repo.
 # Rebuild with: python cluster/write_workers.py
 cluster/workers.json
+cluster/overflow.json
 
 # Claude Code worktrees and Remember plugin notes; not project code
 .claude/worktrees/
