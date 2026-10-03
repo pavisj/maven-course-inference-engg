@@ -61,7 +61,8 @@ python plots/make_plots.py --run-dir metrics/run_x --out-dir plots/run_x --label
 # 5. Cross-run analysis
 python metrics/goodput.py                     # metrics/goodput.json, plots/goodput_vs_offered.png
 python metrics/whatif.py                      # metrics/whatif.json (first-order replay)
-python metrics/compare_runs.py --base run_i --new run_j   # metrics/run_j/compare_run_i.json
+python metrics/compare_runs.py --base run_i --new run_j --also run_m run_m2   # metrics/run_j/compare_run_i.json
+python -m traffic.run_l guard --out-dir metrics/run_l_guard   # run L, with the gateway running (see DESIGN Part 7)
 pytest tests/                                 # guard, admit, place, queue, overflow
 jupyter lab notebook/analysis.ipynb
 
@@ -69,7 +70,7 @@ jupyter lab notebook/analysis.ipynb
 modal app stop tutor-cluster
 ```
 
-Settings for `traffic/gateway_run.sh`: `RUN`, `MIXES` (`unique`, `shared_chapter`, `mixed`), `CHAPTER`, `USERS`, `DURATION`, `PLACE_POLICY` (`prefix_then_load`, `least_loaded`, `p2c`), `LOAD_BOUND`, `MAX_IN_FLIGHT`, `TENANT_SCALE`, `OVER_CAP_TTFT` (default 2 s), `BASE_TTFT` (default 0.4 s), `WARM_TTFT` (default 0.211 s). The gateway writes the active admit settings to `admit_settings.json` in the run folder. Engine profiles for KV-pressure tests: `ENGINE_PROFILE=pressure` or `pressure2` before `modal deploy`.
+Settings for `traffic/gateway_run.sh`: `RUN`, `MIXES` (`unique`, `shared_chapter`, `mixed`), `CHAPTER`, `USERS`, `DURATION`, `PLACE_POLICY` (`prefix_then_load`, `least_loaded`, `p2c`), `LOAD_BOUND`, `MAX_IN_FLIGHT`, `TENANT_SCALE`, `OVER_CAP_TTFT` (default 2 s), `BASE_TTFT` (default 0.4 s), `WARM_TTFT` (default 0.211 s), `INTERACTIVE_DEADLINE` (default 6 s). The gateway writes the active admit settings to `admit_settings.json` in the run folder. Engine profiles for KV-pressure tests: `ENGINE_PROFILE=pressure` or `pressure2` before `modal deploy`.
 
 ## Where each run's data is
 
@@ -88,6 +89,8 @@ Each folder in `metrics/` holds the traffic log (`traffic_*.jsonl`, one row per 
 | H1, H2 | `metrics/run_h1/`, `metrics/run_h2/` | `least_loaded` vs `prefix_then_load`: does prefix routing help? |
 | I | `metrics/run_i/` | 96 users with capacity overflow to the 1.5B model |
 | J | `metrics/run_j/` | run I's load with `over_cap` trigger 4 s, tenant windows ×2, no 0.4 s floor |
+| L | `metrics/run_l_guard/`, `metrics/run_l_abort/` | 12 guard deaths (0 engine calls); 10 of 20 clients close at 1.0 s |
+| M, M2 | `metrics/run_m/`, `metrics/run_m2/` | interactive deadline 3 s at 64 and 96 users: `timeout_queue` vs late answers |
 
 Other files in `metrics/`: `gpu_facts.json` and `worker_startup_log.txt` (Part 1), `warm_proof.json`, `overflow_check.json`, `network_offset.json`, `goodput.json`, `whatif.json`, `metric_names.txt`.
 

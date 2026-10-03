@@ -24,7 +24,7 @@ RUNS = [  # (folder, label, users, through the gateway)
     ("baseline_a", "A", 8, False), ("baseline_b", "B", 48, False), ("run_c", "C", 48, True),
     ("run_d", "D", 48, True), ("run_e", "E", 48, True), ("run_f", "F", 64, True), ("run_g", "G", 96, True),
     ("run_f2", "F2", 128, True), ("run_h1", "H1", 48, True), ("run_h2", "H2", 48, True), ("run_i", "I", 96, True),
-    ("run_j", "J", 96, True),
+    ("run_j", "J", 96, True), ("run_m", "M", 64, True), ("run_m2", "M2", 96, True),
 ]
 
 

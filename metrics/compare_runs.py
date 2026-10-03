@@ -1,6 +1,6 @@
 """Compare two gateway runs on the same load (run J vs run I), and check the what-if predictions.
 
-    python metrics/compare_runs.py --base run_i --new run_j
+    python metrics/compare_runs.py --base run_i --new run_j --also run_m run_m2
 
 Reads metrics/<run>/summary.json, metrics/<run>/gateway_requests.jsonl, metrics/goodput.json and
 metrics/whatif.json (run summarise_run.py and goodput.py first). Writes metrics/<new>/compare_<base>.json.
@@ -111,10 +111,12 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--base", default="run_i")
     parser.add_argument("--new", default="run_j")
+    parser.add_argument("--also", nargs="*", default=[], help="more runs to add as columns, e.g. run_m run_m2")
     args = parser.parse_args()
     goodput = json.loads((ROOT / "metrics" / "goodput.json").read_text())
     b, n = run_view(args.base, goodput), run_view(args.new, goodput)
     out = {"base": args.base, "new": args.new, args.base: b, args.new: n, "whatif": whatif_check(args.base, b, n)}
+    out.update({run: run_view(run, goodput) for run in args.also})
     path = ROOT / "metrics" / args.new / f"compare_{args.base}.json"
     path.write_text(json.dumps(out, indent=2) + "\n")
     print(json.dumps(out, indent=2))

@@ -173,6 +173,7 @@ _Step 4. Code: `control/guard.py`, `control/admit.py`, `control/snapshot.py`, `c
 | Order | Reason | Code | Rule | Constant and source |
 |---|---|---|---|---|
 | 1 | `bad_body` | 400 | `messages` is a non-empty list of `{role, content}`; `max_tokens`, if present, is a positive integer | none |
+| 1b | `unknown_model` | 400 | `model`, if present, is `tutor` (added for run L: `gpt-4o` used to reach vLLM) | `--served-model-name` |
 | 2 | `unknown_tenant` | 400 | `X-Tenant` is `interactive` or `batch` | tenants: decision 6 |
 | 3 | `prompt_too_long` | 400 | prompt_tokens + max_tokens ≤ 8,192 | 8,192 = `--max-model-len` (Part 1) |
 | 4 | `max_tokens_too_large` | 400 | max_tokens ≤ 512 interactive, ≤ 256 batch | 512 and 256: decision 6 |
@@ -344,6 +345,7 @@ Measured: in runs D, E and F, the gateway queue never held a request (max depth 
   - KV still peaked at 99.8 % (WorkerA) and 99.4 % (WorkerB); vLLM preempted 15 requests (7 and 8), and its waiting queue reached 22.
   - **KV full after admit: the door sheds, and the engine preempts the rest.** `kv_free` reads KV usage up to 2 s old and counts only the new request's blocks, not the decode growth of requests already running. So it stopped 781 requests at the door, and 15 still had to be preempted inside the engine.
   - **Client gone:** no client left mid-stream in these runs (aborts 0). The path is tested: closing the upstream stream makes vLLM abort the request and free its blocks (Step 4 stub test, `client_gone`).
+  - **Finding (run L, on GPU):** the gateway does cancel the upstream vLLM request when the client closes. 10 of 20 streams closed at 1.0 s: vLLM running fell from 19 to 10 and KV from 7.7 % to 4.0 % within about 1.5 s, and only the 10 kept requests completed. Two changes before the run: the relay's cleanup is shielded, so a cancelled stream still closes the upstream and releases its seat; and the row says `decision=aborted`. vLLM 0.21 does not count these aborts in `request_success_total{finished_reason="abort"}`. Part 7, "Runs L and M".
 - **Which saved memory on the shared-prefix mix?** PagedAttention packs every sequence into 16-token blocks, so KV grows with real length, not with `--max-model-len`. The prefix cache reuses blocks: 56 % to 66 % of prompt tokens were cache hits per worker in runs D to F, so those tokens took no new blocks. On this workload the prefix cache saved more: at 30 sequences, KV stayed at 31 % to 36 % of a halved cache.
 
 ### Part 5 questions: Pavi's answers (Step 10b)
@@ -522,7 +524,7 @@ Plots: `plots/run_j/`. Full comparison: `metrics/run_j/compare_run_i.json` (`pyt
 - Within 50 %: 93.2 % raw and 89.5 % with the trip removed, against 60.4 % and 47.7 % in run I.
 - **This does not prove the floor removal.** Run J ran full for all 4 minutes: 1,730 of 1,803 admitted requests had est_ttft of 2 s or more. In that range the queue term dominates, and the estimate tracked in every loaded run (G, F2, I).
 - Only 67 decisions had est_ttft below 0.5 s, all in the first 0.3 s. With the floor removed they estimated 0.15 s. They measured about 3.4 s with the trip removed, because 64 prompts of about 2,100 tokens started prefill at once. The 0.4 s floor would have missed them too. Little's law counts waiting and queued requests, not prefills already in flight.
-- The light-load case, where the floor made the estimate too high (see "Network offset"), did not happen in run J. It needs a light-load run to test.
+- The light-load case, where the floor made the estimate too high (see "Network offset"), did not happen in run J. **Run M tested it:** 62.4 % within 50 % at light load without the floor (see "Runs L and M").
 
 #### What-if predictions vs run J
 
@@ -549,6 +551,85 @@ Why the predictions held or failed:
 
 **Next step:** give batch a protected share before the 4 s trigger is tried again, for example seats that only batch may use. Run J shows that, at full seats, interactive-first order plus batch `over_cap` at 8 leaves batch nothing.
 
+### Runs L and M: guard deaths, client abort, and `timeout_queue` that must fire
+
+**Answer: the guard stopped 12 of 12 bad requests with 0 engine calls. A client that leaves frees its engine slot within about 1.5 s. At a 3 s interactive deadline, admit shed 252 interactive requests after warm-up, at 0 GPU seconds each. Run G's 3 late interactive answers cost 15.8 engine-slot seconds for answers past the deadline.**
+
+A second deploy (18:25 to 18:40 IST, approved by Pavithra) ran L, M and M2 with run J's settings. Warm probes: WorkerA 228 ms, WorkerB 179 ms; network trip 346 ms (`metrics/run_m/`). Engine speed depends on which GPU host Modal gives each container.
+
+#### Run L, part 1: guard deaths (`metrics/run_l_guard/`)
+
+| Reason | Sent | Rejected 400 | `gateway_guard_rejects_total` change |
+|---|---|---|---|
+| `prompt_too_long` (about 9,000 prompt tokens + 512 > 8,192) | 4 | 4 | +4 |
+| `unknown_model` (`"model": "gpt-4o"`) | 4 | 4 | +4 |
+| `max_tokens_too_large` (2,048 > 512) | 4 | 4 | +4 |
+
+- **0 engine calls:** vLLM's request count and prompt-token count did not change on either worker.
+- Each rejection took 3.6 ms (median) in the gateway.
+- **Change to the guard:** before run L the guard had no model check, so `gpt-4o` reached vLLM. The new reason `unknown_model` rejects any `model` other than `tutor`. A request without `model` still passes.
+
+#### Run L, part 2: client abort (`metrics/run_l_abort/`, `plots/run_l_abort/running_and_kv.png`)
+
+20 interactive requests at once over the chapters, each asking for about 400 words. The client closed 10 of them at 1.0 s. Scrape every 1 s for 30 s.
+
+| Time after the burst | vLLM running, WorkerA + WorkerB | KV %, WorkerA + WorkerB | Gateway in flight |
+|---|---|---|---|
+| +1.4 s (0.4 s after the close) | 5 + 14 = 19 | 2.3 + 5.4 = 7.7 | 4 + 15 |
+| +2.5 s | 0 + 10 = 10 | 0 + 4.0 = 4.0 | 0 + 10 |
+| +11.6 s | 0 | 0 | 0 |
+
+- **Running dropped by 9 and KV % fell by half within about 1.5 s of the close.** The other 10 ran to the end (last one at 10.8 s).
+- **Proof that vLLM aborted:** the 10 closed requests reached the engine (42,321 prompt tokens prefilled), but only the 10 kept requests completed. vLLM 0.21 does not count these in `vllm:request_success_total{finished_reason="abort"}`, so the proof is the completion count and the running and KV drop.
+- Request rows: 10 × `decision=aborted`, `reason=client_gone`, and 10 × `ok`.
+- **Attempt 1 (kept in `metrics/run_l_abort/attempt1/`):** my script checked the close time only when a token arrived. On the busy worker the first token came after 2 to 3 s, so those streams closed late. The abort still worked. The fix: a timer closes the stream at 1.0 s.
+
+#### Run M: `timeout_queue` at a 3 s interactive deadline (`metrics/run_m/`, `metrics/run_m2/`)
+
+Run J had 0 admit-stage `timeout_queue` sheds after its first 15 s. Its only later `timeout_queue` shed was a batch request that waited 60 s in the queue. **Decision:** run M ran, because the admit-stage shed it tests never fired in run J.
+
+- **Setting:** `--interactive-deadline` (env `INTERACTIVE_DEADLINE`) sets the interactive deadline in admit and in the queue together. Default 6 s. One test.
+- **Run M (64 users, as in the brief): 0 sheds.** 64 users on 64 seats (32 per worker) never queue, so the estimate stayed near 0.15 s. 1,537 requests, all answered.
+- **Run M2 (96 users, run J's load; decision: added after M showed no sheds):** 380 `timeout_queue`.
+
+| `timeout_queue` after the first 15 s, run M2 | Count | Estimate at the shed | Queue on that worker at the shed |
+|---|---|---|---|
+| Interactive, at admit | 252 (WorkerA 196, WorkerB 56) | 3.001 to 3.481 s (median 3.111 s) | 8 to 13 (median 11); 32 of 32 seats in use; vLLM waiting ≤ 2 |
+| Interactive and batch, in the queue | 62 (interactive 53, batch 9) | median 2.62 s at admit | waited the full deadline (3 s or 60 s) |
+
+- With a 3 s deadline and a 4 s `over_cap` trigger, admit test 2 (`timeout_queue`) fires before test 4 (`over_cap`). So no interactive request reached `over_cap` or Overflow in run M2.
+- **WorkerA took 196 of the 252.** It was on the slower GPU host, so its completion rate was lower and its estimate higher.
+
+**What a shed saves** (`metrics/run_m2/late_cost.json`; engine-slot seconds = gateway total time − queue wait − network trip):
+
+| | Requests | Engine-slot seconds |
+|---|---|---|
+| Run M2 interactive `timeout_queue` sheds at admit | 252 | 0 |
+| Run G interactive answers with first token after 6 s (client side) | 3 | 15.8 (3.5, 3.7, 8.6 s each) |
+| Run M2 interactive answers with first token after 3 s | 99 | 809.9 (median 6.95 s each) |
+
+**A `timeout_queue` shed costs 0 GPU seconds; run G's 3 late interactive answers cost 15.8 engine-slot seconds for answers the user no longer waited for.**
+
+- **Finding: the queue deadline is measured to the seat, not to the first token.** Run G's 3 late answers were estimated at 0.4 to 1.1 s, then waited 5.3 to 6.0 s in the gateway queue. They got a seat just before the 6 s queue deadline, so their first token came after 6 s. Run M2's 99 late answers show the same at 3 s. A fix to consider: the queue releases a request only if deadline − wait is more than the engine's expected TTFT.
+
+**Run M answers the floor question from run J.** Run M ran at light load with the floor removed: est p50 0.15 s against a measured p50 of 0.237 s with the trip removed. 62.4 % of its estimates were within 50 %. The light-load runs with the floor scored 20.0 % to 46.1 % (D, E, F, H1, H2). Removing the floor helps at light load.
+
+| | Run I | Run J | Run M | Run M2 |
+|---|---|---|---|---|
+| Users; interactive deadline | 96; 6 s | 96; 6 s | 64; 3 s | 96; 3 s |
+| Goodput per minute, total (6 s deadline) | 322.6 | 432.0 | 487.0 | 424.6 |
+| Goodput per minute, interactive / batch | 192.5 / 130.1 | 424.6 / 7.4 | 243.7 / 243.4 | 404.5 / 20.1 |
+| Shed `tenant_tokens`, interactive / batch | 0 / 731 | 0 / 0 | 0 / 0 | 0 / 0 |
+| Shed `over_cap`, interactive / batch | 496 / 48 | 19 / 1,767 | 0 / 0 | 0 / 1,561 |
+| Shed `timeout_queue`, interactive / batch | 20 / 0 | 12 / 15 | 0 / 0 | 357 / 23 |
+| Gateway TTFT p50 / p95, interactive | 757 / 2,187 ms | 3,506 / 4,557 ms | 607 / 1,534 ms | 1,625 / 3,201 ms |
+| Overflow sent / limited / failed | 40 / 496 / 0 | 10 / 19 / 0 | 0 / 0 / 0 | 0 / 0 / 0 |
+| Est within 50 %, raw / trip removed | 60.4 % / 47.7 % | 93.2 % / 89.5 % | 0.2 % / 62.4 % | 62.5 % / 43.6 % |
+| Network trip | 348 ms | 276 ms | 346 ms | 346 ms |
+
+- Run M2's goodput at its own 3 s deadline: 416.1 per minute.
+- **Run M has the best goodput of the four, with 0 sheds and both tenants served.** At 64 users the two workers are full but not over. At 96 users the extra 32 users add sheds and retries, not answers.
+
 ### Goodput
 
 goodput = requests answered within deadline per minute: status 200 and the **first token** within the deadline from arrival (interactive 6 s, batch 60 s; the same deadlines admit and the queue use). Shed, failed or late = 0. Arrival is when the client sent the request, so the client-side TTFT counts. `metrics/goodput.json`, `plots/goodput_vs_offered.png`.
@@ -567,6 +648,8 @@ goodput = requests answered within deadline per minute: status 200 and the **fir
 | H2 | 48 | 471.8 | 341.8 | 72 % | 341.8 / none | 144.8 / 197.0 | 0 |
 | I | 96 | 636.3 | 322.6 | 51 % | 192.5 / 130.1 | 160.7 / 152.7 (+ Overflow 9.7) | 5 |
 | J | 96 | 864.0 | 432.0 | 50 % | 424.6 / 7.4 | 214.7 / 214.9 (+ Overflow 2.4) | 0 |
+| M | 64 | 487.0 | 487.0 | 100 % | 243.7 / 243.4 | 241.4 / 245.6 | 0 |
+| M2 | 96 | 1,034.9 | 424.6 | 41 % | 404.5 / 20.1 | 213.6 / 211.1 | 5 |
 
 - Offered load includes retries after a 429, so a run that sheds more offers more.
 - Runs F and F2 used tenant windows ×10 (KV tests): their goodput shows what the two workers can deliver without tenant limits, about 490 to 580 per minute.
@@ -580,18 +663,19 @@ goodput = requests answered within deadline per minute: status 200 and the **fir
 | guard | body malformed | 400 `bad_body` | none | Step 4 | unit tests, stub test | none: never a GPU second | `bad_body` > 1 % of requests (client bug) |
 | guard | `X-Tenant` not interactive or batch | 400 `unknown_tenant` | 2 tenants | decision 6 | unit tests | none | any `unknown_tenant` (misconfigured client) |
 | guard | prompt + max_tokens > 8,192 | 400 `prompt_too_long` | 8,192 | `--max-model-len` | unit tests | protects KV per sequence | none |
-| guard | max_tokens > 512 / 256 | 400 `max_tokens_too_large` | 512 / 256 | decision 6 | unit tests | bounds decode time | none |
+| guard | max_tokens > 512 / 256 | 400 `max_tokens_too_large` | 512 / 256 | decision 6 | unit tests; L (4) | bounds decode time | none |
+| guard | model is not `tutor` | 400 `unknown_model` | `tutor` | `--served-model-name` | unit test; L (4) | none: never a GPU second | any `unknown_model` (client points at the wrong API) |
 | place | home has < LOAD_BOUND in flight and is warm | go home | LOAD_BOUND 22 (28 in H2) | 70 % of 32 slots | D to I; H1 vs H2 | H2 vs H1: +9.9 hit-rate points, +47.5 goodput / min | hop share > 50 % for 10 min |
 | place | home busy or not warm | hop to the lowest-score worker | score = in flight + queue + waiting | Step 5b | D, E, G, I | E: 310,030 tokens recomputed | tokens recomputed / min rising |
 | place | no warm worker | 503 → failure overflow | none | Step 7 | none (never happened) | none measured | any `no_warm_worker` |
 | admit | tenant tokens + request > window × warm workers | 429 `tenant_tokens`, retry ≥ 2 s | 400,000 / 150,000 per worker | baseline B | D (6,018), G (770), I (731), J at ×2 (0) | D capped at 165 / min; replay ×2: +109 to +129 / min; J at ×2: batch −122.7 / min (batch moved to `over_cap`) | `tenant_tokens` > 20 % of a tenant's requests for 5 min |
-| admit | est_ttft > deadline | 429 `timeout_queue` | 6 s / 60 s; Little's law | baseline B p95 | E (14), G (24), I (20), J (0) | false sheds at start: fixed twice; J: 0 at admit in the first 15 s | `timeout_queue` > 5 % of requests |
+| admit | est_ttft > deadline | 429 `timeout_queue` | 6 s / 60 s; Little's law | baseline B p95 | E (14), G (24), I (20), J (0), M2 at 3 s (252 after 15 s) | false sheds at start: fixed twice; J: 0 at admit in the first 15 s; M2: each shed 0 GPU s vs 15.8 engine-slot s for G's 3 late answers | `timeout_queue` > 5 % of requests |
 | admit | KV % + request blocks > 85 % | 429 `kv_free` | 85 %; num_gpu_blocks | Part 1 | F2 (781) | F2: 578 / min at KV 99.8 % | KV usage > 90 % or any preemption |
 | admit | batch: waiting + gateway queue ≥ 8 | 429 `over_cap` | 8 | Step 5a | G (68), I (48), J (1,767) | protects interactive TTFT; J: starved batch when the queue held 13 | batch admitted = 0 for 1 min |
 | admit | interactive: seats full and est_ttft > 2 s | Overflow under the limiter, else 429 `over_cap` | 2 s (J: 4 s); 32 seats | baseline B | G (568 × 429), I (40 sent, 496 × 429), J at 4 s (10 sent, 19 × 429) | replay 2 → 4 s: +121 to +131 / min; J: interactive +232.1 / min, TTFT p50 757 → 3,506 ms | interactive `over_cap` > 10 % |
 | queue | 32 in flight on the worker | wait in the gateway; interactive first | 32 seats | `--max-num-seqs` | G, I (max 8 waiting), J (max 13) | interactive p50 716 ms vs batch 1,369 ms (G); J: 3 s queue wait | gateway queue wait p95 > 3 s |
-| queue | deadline passes while queued | 429 `timeout_queue` (stage queue) | 6 s / 60 s | Step 6 | G (3), J (27) | J: 12 interactive at start; 15 batch waited 60 s behind interactive | none |
-| queue | client gone (queued / in flight) | drop / close upstream so vLLM aborts | none | Step 6 | stub test | frees KV for others | in-flight aborts spike |
+| queue | deadline passes while queued | 429 `timeout_queue` (stage queue) | 6 s / 60 s | Step 6 | G (3), J (27), M2 (62 after 15 s) | J: 12 interactive at start; 15 batch waited 60 s behind interactive. Released just before the deadline = late answer (G: 3; M2: 99) | late answers > 1 % |
+| queue | client gone (queued / in flight) | drop / close upstream so vLLM aborts | none | Step 6 | stub test; L (10 of 20 closed) | L: running 19 → 10, KV 7.7 % → 4.0 % within 1.5 s | in-flight aborts spike |
 | hop | chosen ≠ chapter home | record `recompute` | backend recompute | Part 6 | D to I | the price of a hop: lost prefix hits | none |
 | warm | last probe engine TTFT ≤ 0.211 s | mark warm; place may use it | 0.211 s (J: 0.28 s) | warm probes (run E) | E: 1,007 → 175 ms; J deploy steady at 229 to 244 ms | avoids a 1 s first request | worker not warm > 5 min |
 | overflow | 429, 500 or out of memory from a worker | stay: return with Retry-After | 2 s | Step 8 | unit tests | none measured | 500 rate > 0 |
@@ -630,10 +714,13 @@ The estimate predicts engine TTFT; the gateway measures TTFT from arrival, which
 | H2 | 0.400 s | 0.490 s | 0.142 s | 84.3 % | 26.9 % |
 | I | 0.817 s | 1.080 s | 0.732 s | 60.4 % | 47.7 % |
 | J (floor removed; own trip 276 ms) | 3.118 s | 3.518 s | 3.241 s | 93.2 % | 89.5 % |
+| M (floor removed; 64 users; trip 346 ms) | 0.150 s | 0.583 s | 0.237 s | 0.2 % | 62.4 % |
+| M2 (floor removed; 96 users, 3 s deadline) | 2.654 s | 1.650 s | 1.304 s | 62.5 % | 43.6 % |
 
 - **The estimate is too high at light load.** With the trip removed, an idle engine answers in 142 to 226 ms, but est_ttft never goes below 0.4 s: that is the Step 4 prefill-backlog floor (`BASE_TTFT_S = 0.4`), which `max(Little, backlog)` keeps. The raw "within 50 %" looked good only because the 0.35 s trip filled that gap.
 - Under load (F2, G, I) the queue term dominates and the estimate tracks better.
-- Run J removed the floor, but ran full for the whole run. Its 89.5 % comes from the loaded regime, not from the floor removal. The light-load case is still untested.
+- Run J removed the floor, but ran full for the whole run. Its 89.5 % comes from the loaded regime, not from the floor removal.
+- **Run M tested the light-load case:** without the floor, 62.4 % within 50 % (trip removed), against 20.0 % to 46.1 % for the light-load runs with the floor. The raw number (0.2 %) is low because the 346 ms trip is about twice the idle engine TTFT.
 
 ## Part 8. Proof
 

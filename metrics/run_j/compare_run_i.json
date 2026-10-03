@@ -205,5 +205,168 @@
       "predicted_goodput_change": 248.6,
       "measured_goodput_change": 109.4
     }
-  ]
+  ],
+  "run_m": {
+    "goodput_per_min": 487.0,
+    "goodput_interactive": 243.7,
+    "goodput_batch": 243.4,
+    "goodput_by_worker": {
+      "WorkerA": 241.4,
+      "WorkerB": 245.6
+    },
+    "offered_per_min": 487.0,
+    "goodput_share": 1.0,
+    "late": 0,
+    "requests_sent": 1537,
+    "admitted_by_tenant": {
+      "interactive": 769,
+      "batch": 768
+    },
+    "sheds": {},
+    "ttft_ms": {
+      "all": {
+        "p50": 583,
+        "p95": 1526
+      },
+      "interactive": {
+        "p50": 607,
+        "p95": 1534
+      },
+      "batch": {
+        "p50": 531,
+        "p95": 1276
+      }
+    },
+    "overflow": {
+      "sent": 0,
+      "limited": 0,
+      "failed": 0
+    },
+    "overflow_ttft_ms": null,
+    "est_p50_s": 0.15,
+    "measured_p50_s": 0.583,
+    "within_50_raw": 0.002,
+    "trip_s": 0.3459,
+    "within_50_minus_trip": 0.624,
+    "measured_minus_trip_p50_s": 0.237,
+    "within_50_minus_348ms": 0.627,
+    "est": {
+      "est_min_s": 0.15,
+      "est_p50_s": 0.15,
+      "share_below_0_4_s": 0.996
+    },
+    "early": {
+      "window_s": 15.0,
+      "requests": 134,
+      "timeout_queue": 0,
+      "timeout_queue_by_tenant": {},
+      "timeout_queue_est_max_s": null,
+      "timeout_queue_whole_run": 0
+    },
+    "workers": {
+      "WorkerA": {
+        "prefix_hit_pct": 69.5,
+        "engine_ttft_mean_ms": 317,
+        "max_kv_pct": 11.9,
+        "preemptions": 0,
+        "gateway_queue_max": 5.0,
+        "gateway_in_flight_mean": 29.2
+      },
+      "WorkerB": {
+        "prefix_hit_pct": 71.2,
+        "engine_ttft_mean_ms": 278,
+        "max_kv_pct": 11.7,
+        "preemptions": 0,
+        "gateway_queue_max": 0.0,
+        "gateway_in_flight_mean": 29.2
+      }
+    },
+    "hops": 708,
+    "hop_share": 0.461
+  },
+  "run_m2": {
+    "goodput_per_min": 424.6,
+    "goodput_interactive": 404.5,
+    "goodput_batch": 20.1,
+    "goodput_by_worker": {
+      "WorkerA": 213.6,
+      "WorkerB": 211.1
+    },
+    "offered_per_min": 1034.9,
+    "goodput_share": 0.41,
+    "late": 5,
+    "requests_sent": 3300,
+    "admitted_by_tenant": {
+      "interactive": 1293,
+      "batch": 66
+    },
+    "sheds": {
+      "batch/over_cap": 1561,
+      "batch/timeout_queue": 23,
+      "interactive/timeout_queue": 357
+    },
+    "ttft_ms": {
+      "all": {
+        "p50": 1650,
+        "p95": 3347
+      },
+      "interactive": {
+        "p50": 1625,
+        "p95": 3201
+      },
+      "batch": {
+        "p50": 2556,
+        "p95": 56524
+      }
+    },
+    "overflow": {
+      "sent": 0,
+      "limited": 0,
+      "failed": 0
+    },
+    "overflow_ttft_ms": null,
+    "est_p50_s": 2.654,
+    "measured_p50_s": 1.65,
+    "within_50_raw": 0.625,
+    "trip_s": 0.3459,
+    "within_50_minus_trip": 0.436,
+    "measured_minus_trip_p50_s": 1.304,
+    "within_50_minus_348ms": 0.435,
+    "est": {
+      "est_min_s": 0.15,
+      "est_p50_s": 2.782,
+      "share_below_0_4_s": 0.02
+    },
+    "early": {
+      "window_s": 15.0,
+      "requests": 349,
+      "timeout_queue": 66,
+      "timeout_queue_by_tenant": {
+        "interactive": 52,
+        "batch": 14
+      },
+      "timeout_queue_est_max_s": 4.65,
+      "timeout_queue_whole_run": 380
+    },
+    "workers": {
+      "WorkerA": {
+        "prefix_hit_pct": 57.5,
+        "engine_ttft_mean_ms": 356,
+        "max_kv_pct": 14.0,
+        "preemptions": 0,
+        "gateway_queue_max": 12.0,
+        "gateway_in_flight_mean": 29.8
+      },
+      "WorkerB": {
+        "prefix_hit_pct": 56.6,
+        "engine_ttft_mean_ms": 327,
+        "max_kv_pct": 14.0,
+        "preemptions": 0,
+        "gateway_queue_max": 11.0,
+        "gateway_in_flight_mean": 29.9
+      }
+    },
+    "hops": 681,
+    "hop_share": 0.501
+  }
 }

@@ -1,0 +1,40 @@
+{
+  "method": "engine-slot seconds = gateway total_s - queue_wait_s - network trip; a shed costs 0",
+  "run_g_late_interactive": [
+    {
+      "client_ttft_s": 6.4,
+      "gateway_ttft_s": 5.7361,
+      "queue_wait_s": 5.2666,
+      "total_s": 9.3393,
+      "output_tokens": 152,
+      "engine_slot_s": 3.72,
+      "worker": "WorkerA",
+      "est_ttft": 0.761
+    },
+    {
+      "client_ttft_s": 7.12,
+      "gateway_ttft_s": 6.5431,
+      "queue_wait_s": 5.9988,
+      "total_s": 9.8426,
+      "output_tokens": 144,
+      "engine_slot_s": 3.5,
+      "worker": "WorkerA",
+      "est_ttft": 1.12
+    },
+    {
+      "client_ttft_s": 7.03,
+      "gateway_ttft_s": 6.3789,
+      "queue_wait_s": 5.8642,
+      "total_s": 14.8064,
+      "output_tokens": 323,
+      "engine_slot_s": 8.59,
+      "worker": "WorkerB",
+      "est_ttft": 0.4
+    }
+  ],
+  "run_g_late_engine_slot_s": 15.81,
+  "run_m2_late_3s": {
+    "n": 99,
+    "engine_slot_s_total": 809.9
+  }
+}

@@ -309,5 +309,59 @@
     },
     "late_answers": 0,
     "ttft_p50_ms": 3523
+  },
+  {
+    "run": "M",
+    "folder": "run_m",
+    "users": 64,
+    "through_gateway": true,
+    "minutes": 3.16,
+    "offered_per_min": 487.0,
+    "answered_per_min": 487.0,
+    "goodput_per_min": 487.0,
+    "goodput_share": 1.0,
+    "by_tenant": {
+      "batch": {
+        "offered_per_min": 243.4,
+        "goodput_per_min": 243.4
+      },
+      "interactive": {
+        "offered_per_min": 243.7,
+        "goodput_per_min": 243.7
+      }
+    },
+    "by_worker_goodput_per_min": {
+      "WorkerA": 241.4,
+      "WorkerB": 245.6
+    },
+    "late_answers": 0,
+    "ttft_p50_ms": 592
+  },
+  {
+    "run": "M2",
+    "folder": "run_m2",
+    "users": 96,
+    "through_gateway": true,
+    "minutes": 3.19,
+    "offered_per_min": 1034.9,
+    "answered_per_min": 426.2,
+    "goodput_per_min": 424.6,
+    "goodput_share": 0.41,
+    "by_tenant": {
+      "batch": {
+        "offered_per_min": 517.4,
+        "goodput_per_min": 20.1
+      },
+      "interactive": {
+        "offered_per_min": 517.4,
+        "goodput_per_min": 404.5
+      }
+    },
+    "by_worker_goodput_per_min": {
+      "WorkerA": 213.6,
+      "WorkerB": 211.1
+    },
+    "late_answers": 5,
+    "ttft_p50_ms": 1672
   }
 ]
