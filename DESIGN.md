@@ -421,6 +421,110 @@ vLLM on Modal (WorkerA, WorkerB): waiting / running / preempt, prefix cache, chu
 - Traffic runs through the same path: `traffic/gateway_run.sh` (runs C to F) or `python -m traffic.run --base-url http://127.0.0.1:8765`.
 - The baselines (A, B) skip the gateway on purpose: `--base-url` defaults to WorkerA.
 
+### Two kinds of overflow on this path
+
+- **Capacity overflow** happens at admit, before any engine sees the request: interactive `over_cap` → Overflow (Step 12). The gateway decides.
+- **Failure overflow** happens after forward: a worker answered 503 or 529 → the other worker once → Overflow (Step 8). An engine decides.
+- Both share one limiter (10 per minute) and the same `X-Via` header; Part 2, item 6 has the full comparison.
+
+### Run I: what happened when the gateway overflowed?
+
+**Answer: 40 interactive requests went to the 1.5B Overflow (the limiter's 10 per minute for 4 minutes); 496 more hit the limiter and still got the 429 `over_cap`. In run G, all 568 got a 429.**
+
+Run I: run G's load (96 users, `mixed`, 4 min, normal engine), with capacity overflow on. Overflow pre-warmed first (`metrics/run_i/overflow_prewarm.json`: up after 132.8 s).
+
+| | Run G (no capacity overflow) | Run I (capacity overflow) |
+|---|---|---|
+| Interactive `over_cap` | 568, all 429 | 536: 40 sent to Overflow, 496 limited (429), 0 failed |
+| Overflow TTFT p50 / p95 | none | 1,007 / 2,143 ms (prompt median 2,118 tokens) |
+| Cluster interactive TTFT p50 / p95 | 716 / 2,172 ms | 757 / 2,187 ms |
+| Goodput (answered within deadline per minute) | 321.3 | 322.6 (Overflow 9.7 of it) |
+
+- Overflow answered as fast as the cluster: its p95 was 2,143 ms against the cluster's 2,187 ms. The 1.5B model has less to compute per token.
+- The limiter, not Overflow, is the bottleneck: 93 % of interactive `over_cap` requests still got the 429.
+- **Went wrong:** 20 interactive `timeout_queue` sheds in the first 7.6 to 10.6 s. After the 10th completion, the rate divided by the time since the gateway started, which included the 12 s warm-up wait. Fixed after run I (rate span from the first completion, with a test), not re-measured on GPU.
+
+### Goodput
+
+goodput = requests answered within deadline per minute: status 200 and the **first token** within the deadline from arrival (interactive 6 s, batch 60 s; the same deadlines admit and the queue use). Shed, failed or late = 0. Arrival is when the client sent the request, so the client-side TTFT counts. `metrics/goodput.json`, `plots/goodput_vs_offered.png`.
+
+| Run | Users | Offered / min | Goodput / min | Share | Interactive / batch goodput | Per worker (A / B) | Late |
+|---|---|---|---|---|---|---|---|
+| A | 8 | 96.9 | 96.9 | 100 % | 81.2 / 15.6 | 96.9 / direct | 0 |
+| B | 48 | 256.9 | 253.8 | 99 % | 211.3 / 42.5 | 253.8 / direct | 39 |
+| C | 48 | 320.4 | 186.6 | 58 % | 120.8 / 65.8 | 186.6 / none | 9 |
+| D | 48 | 660.9 | 165.1 | 25 % | 143.3 / 21.7 | 77.9 / 87.2 | 0 |
+| E | 48 | 477.5 | 152.7 | 32 % | 152.7 / none | 73.6 / 79.1 | 0 |
+| F | 64 | 490.6 | 490.6 | 100 % | 245.3 / 245.3 | 242.8 / 247.9 | 0 |
+| G | 96 | 671.7 | 321.3 | 48 % | 190.5 / 130.8 | 165.3 / 156.2 | 3 |
+| F2 | 128 | 836.6 | 577.8 | 69 % | 284.9 / 292.9 | 293.2 / 287.8 | 23 |
+| H1 | 48 | 500.3 | 294.3 | 59 % | 294.3 / none | 155.6 / 138.7 | 12 |
+| H2 | 48 | 471.8 | 341.8 | 72 % | 341.8 / none | 144.8 / 197.0 | 0 |
+| I | 96 | 636.3 | 322.6 | 51 % | 192.5 / 130.1 | 160.7 / 152.7 (+ Overflow 9.7) | 5 |
+
+- Offered load includes retries after a 429, so a run that sheds more offers more.
+- Runs F and F2 used tenant windows ×10 (KV tests): their goodput shows what the two workers can deliver without tenant limits, about 490 to 580 per minute.
+- Late answers stay small (0 to 23 per run): the gateway sheds work it cannot finish in time instead of answering late.
+
+### Policy ledger
+
+| Stage | Condition | Action | Constant | Source | Run that tested it | Goodput effect | Alert |
+|---|---|---|---|---|---|---|---|
+| guard | body malformed | 400 `bad_body` | none | Step 4 | unit tests, stub test | none: never a GPU second | `bad_body` > 1 % of requests (client bug) |
+| guard | `X-Tenant` not interactive or batch | 400 `unknown_tenant` | 2 tenants | decision 6 | unit tests | none | any `unknown_tenant` (misconfigured client) |
+| guard | prompt + max_tokens > 8,192 | 400 `prompt_too_long` | 8,192 | `--max-model-len` | unit tests | protects KV per sequence | none |
+| guard | max_tokens > 512 / 256 | 400 `max_tokens_too_large` | 512 / 256 | decision 6 | unit tests | bounds decode time | none |
+| place | home has < LOAD_BOUND in flight and is warm | go home | LOAD_BOUND 22 (28 in H2) | 70 % of 32 slots | D to I; H1 vs H2 | H2 vs H1: +9.9 hit-rate points, +47.5 goodput / min | hop share > 50 % for 10 min |
+| place | home busy or not warm | hop to the lowest-score worker | score = in flight + queue + waiting | Step 5b | D, E, G, I | E: 310,030 tokens recomputed | tokens recomputed / min rising |
+| place | no warm worker | 503 → failure overflow | none | Step 7 | none (never happened) | none measured | any `no_warm_worker` |
+| admit | tenant tokens + request > window × warm workers | 429 `tenant_tokens`, retry ≥ 2 s | 400,000 / 150,000 per worker | baseline B | D (6,018), G (770), I (731) | D capped at 165 / min; replay ×2: +109 to +129 / min | `tenant_tokens` > 20 % of a tenant's requests for 5 min |
+| admit | est_ttft > deadline | 429 `timeout_queue` | 6 s / 60 s; Little's law | baseline B p95 | E (14), G (24), I (20) | false sheds at start (fixed twice) | `timeout_queue` > 5 % of requests |
+| admit | KV % + request blocks > 85 % | 429 `kv_free` | 85 %; num_gpu_blocks | Part 1 | F2 (781) | F2: 578 / min at KV 99.8 % | KV usage > 90 % or any preemption |
+| admit | batch: waiting + gateway queue ≥ 8 | 429 `over_cap` | 8 | Step 5a | G (68), I (48) | protects interactive TTFT | none |
+| admit | interactive: seats full and est_ttft > 2 s | Overflow under the limiter, else 429 `over_cap` | 2 s; 32 seats | baseline B | G (568 × 429), I (40 sent, 496 × 429) | replay 2 → 4 s: +121 to +131 / min | interactive `over_cap` > 10 % |
+| queue | 32 in flight on the worker | wait in the gateway; interactive first | 32 seats | `--max-num-seqs` | G, I (max 8 waiting) | interactive p50 716 ms vs batch 1,369 ms (G) | gateway queue wait p95 > 3 s |
+| queue | deadline passes while queued | 429 `timeout_queue` (stage queue) | 6 s / 60 s | Step 6 | G (3) | none measured | none |
+| queue | client gone (queued / in flight) | drop / close upstream so vLLM aborts | none | Step 6 | stub test | frees KV for others | in-flight aborts spike |
+| hop | chosen ≠ chapter home | record `recompute` | backend recompute | Part 6 | D to I | the price of a hop: lost prefix hits | none |
+| warm | last probe engine TTFT ≤ 0.211 s | mark warm; place may use it | 0.211 s | warm probes (run E) | E: 1,007 → 175 ms | avoids a 1 s first request | worker not warm > 5 min |
+| overflow | 429, 500 or out of memory from a worker | stay: return with Retry-After | 2 s | Step 8 | unit tests | none measured | 500 rate > 0 |
+| overflow | 503 or 529 from a worker | the other worker once, then Overflow | 10 per minute | Step 8 | unit tests; Overflow check | none measured (no 503 in runs) | any engine 503 |
+| overflow | interactive `over_cap` (capacity) | Overflow under the limiter | 10 per minute | AMA whiteboard | I (40 sent) | +9.7 goodput / min; replay 10 → 30: +20 / min | overflow limited > 0 for 5 min |
+
+### What-if replay (first-order)
+
+**First-order only: a changed decision changes the later queue state, and the replay keeps the logged state, so each number is a bound, not a measurement.** `metrics/whatif.py`, `metrics/whatif.json`.
+
+| Knob | Run | Logged decisions | Change bucket | First-order goodput change |
+|---|---|---|---|---|
+| LOAD_BOUND 22 → 28 | D / E / G / F2 / I | 561 / 147 / 478 / 894 / 436 hops | 561 / 147 / 83 / 0 / 82 stay home | 0 / min in every run: hopped requests were not late |
+| Interactive `over_cap` trigger 2 s → 4 s | G / I | 568 / 536 | 524 / 520 admitted | +131.1 / +121.0 per min |
+| Overflow limiter 10 → 30 per minute | I | 536 attempts | 80 more sent | +20.0 per min (all of run I's overflow answers were on time) |
+| Tenant windows ×1 → ×2 | D / E / G / I | 6,018 / 635 / 770 / 731 `tenant_tokens` | 1,441 / 218 / 516 / 509 admitted | +120.1 / +109.3 / +129.1 / +127.5 per min |
+
+- LOAD_BOUND: the replay reads each worker's in-flight count from the 5 s gateway scrape, not the exact value at decision time, so its "stay home" counts are rough.
+
+### Network offset
+
+The estimate predicts engine TTFT; the gateway measures TTFT from arrival, which includes the laptop → Modal us-east trip.
+
+- Trip: median of 20 `GET /health` round trips from the laptop to each worker: **347.8 ms** (WorkerA 348.6 ms, WorkerB 347.0 ms; range 344 to 357 ms). `metrics/network_offset.json`.
+- Plots: `plots/<run>/est_vs_measured_ttft.png` (as measured) and `est_vs_measured_ttft_minus_trip.png` (trip removed).
+
+| Run | est p50 | measured p50 | measured − trip p50 | within 50 %, raw | within 50 %, trip removed |
+|---|---|---|---|---|---|
+| D | 0.400 s | 0.574 s | 0.226 s | 67.7 % | 46.1 % |
+| E | 0.400 s | 0.530 s | 0.182 s | 60.3 % | 20.0 % |
+| F | 0.400 s | 0.501 s | 0.154 s | 93.6 % | 25.8 % |
+| G | 0.824 s | 0.977 s | 0.629 s | 56.5 % | 35.8 % |
+| F2 | 0.400 s | 0.863 s | 0.515 s | 42.8 % | 63.7 % |
+| H1 | 0.400 s | 0.530 s | 0.182 s | 78.8 % | 36.3 % |
+| H2 | 0.400 s | 0.490 s | 0.142 s | 84.3 % | 26.9 % |
+| I | 0.817 s | 1.080 s | 0.732 s | 60.4 % | 47.7 % |
+
+- **The estimate is too high at light load.** With the trip removed, an idle engine answers in 142 to 226 ms, but est_ttft never goes below 0.4 s: that is the Step 4 prefill-backlog floor (`BASE_TTFT_S = 0.4`), which `max(Little, backlog)` keeps. The raw "within 50 %" looked good only because the 0.35 s trip filled that gap.
+- Under load (F2, G, I) the queue term dominates and the estimate tracks better.
+
 ## Part 8. Proof
 
 _Run data for every answer: `metrics/run_*/summary.json`, `metrics/goodput.json`, the notebook. The 13 answers below are Pavi's (Step 10b)._

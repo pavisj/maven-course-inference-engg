@@ -1,0 +1,92 @@
+[
+  {
+    "knob": "LOAD_BOUND 22 -> 28",
+    "run": "run_d",
+    "hops_logged": 561,
+    "change_bucket": 561,
+    "hop_penalty_ms": -7,
+    "goodput_change_per_min": 0.0
+  },
+  {
+    "knob": "LOAD_BOUND 22 -> 28",
+    "run": "run_e",
+    "hops_logged": 147,
+    "change_bucket": 147,
+    "hop_penalty_ms": 67,
+    "goodput_change_per_min": 0.0
+  },
+  {
+    "knob": "LOAD_BOUND 22 -> 28",
+    "run": "run_g",
+    "hops_logged": 478,
+    "change_bucket": 83,
+    "hop_penalty_ms": 263,
+    "goodput_change_per_min": 0.0
+  },
+  {
+    "knob": "LOAD_BOUND 22 -> 28",
+    "run": "run_f2",
+    "hops_logged": 894,
+    "change_bucket": 0,
+    "hop_penalty_ms": -9,
+    "goodput_change_per_min": 0.0
+  },
+  {
+    "knob": "LOAD_BOUND 22 -> 28",
+    "run": "run_i",
+    "hops_logged": 436,
+    "change_bucket": 82,
+    "hop_penalty_ms": 233,
+    "goodput_change_per_min": 0.0
+  },
+  {
+    "knob": "interactive over_cap trigger 2 s -> 4 s",
+    "run": "run_g",
+    "over_cap_logged": 568,
+    "change_bucket": 524,
+    "goodput_change_per_min": 131.14
+  },
+  {
+    "knob": "interactive over_cap trigger 2 s -> 4 s",
+    "run": "run_i",
+    "over_cap_logged": 536,
+    "change_bucket": 520,
+    "goodput_change_per_min": 121.02
+  },
+  {
+    "knob": "overflow limiter 10 -> 30 per minute",
+    "run": "run_i",
+    "overflow_attempts": 536,
+    "change_bucket": 80,
+    "overflow_on_time_share": 1.0,
+    "goodput_change_per_min": 20.04
+  },
+  {
+    "knob": "tenant windows x1 -> x2",
+    "run": "run_d",
+    "tenant_tokens_logged": 6018,
+    "change_bucket": 1441,
+    "goodput_change_per_min": 120.05
+  },
+  {
+    "knob": "tenant windows x1 -> x2",
+    "run": "run_e",
+    "tenant_tokens_logged": 635,
+    "change_bucket": 218,
+    "goodput_change_per_min": 109.28
+  },
+  {
+    "knob": "tenant windows x1 -> x2",
+    "run": "run_g",
+    "tenant_tokens_logged": 770,
+    "change_bucket": 516,
+    "goodput_change_per_min": 129.14
+  },
+  {
+    "knob": "tenant windows x1 -> x2",
+    "run": "run_i",
+    "tenant_tokens_logged": 731,
+    "change_bucket": 509,
+    "goodput_change_per_min": 127.53
+  }
+]

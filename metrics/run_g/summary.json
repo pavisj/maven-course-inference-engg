@@ -62,7 +62,10 @@
     "measured_p50_s": 0.977,
     "measured_over_est_p50": 1.05,
     "within_50pct": 0.565,
-    "queue_wait_p95_s": 2.19
+    "queue_wait_p95_s": 2.19,
+    "network_offset_s": 0.3478,
+    "measured_minus_trip_p50_s": 0.629,
+    "within_50pct_minus_trip": 0.358
   },
   "by_mix": {
     "mixed": {

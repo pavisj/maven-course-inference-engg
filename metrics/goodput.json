@@ -1,0 +1,285 @@
+[
+  {
+    "run": "A",
+    "folder": "baseline_a",
+    "users": 8,
+    "through_gateway": false,
+    "minutes": 18.28,
+    "offered_per_min": 96.9,
+    "answered_per_min": 96.9,
+    "goodput_per_min": 96.9,
+    "goodput_share": 1.0,
+    "by_tenant": {
+      "batch": {
+        "offered_per_min": 15.6,
+        "goodput_per_min": 15.6
+      },
+      "interactive": {
+        "offered_per_min": 81.2,
+        "goodput_per_min": 81.2
+      }
+    },
+    "by_worker_goodput_per_min": {
+      "WorkerA": 96.9
+    },
+    "late_answers": 0,
+    "ttft_p50_ms": 906
+  },
+  {
+    "run": "B",
+    "folder": "baseline_b",
+    "users": 48,
+    "through_gateway": false,
+    "minutes": 12.58,
+    "offered_per_min": 256.9,
+    "answered_per_min": 256.9,
+    "goodput_per_min": 253.8,
+    "goodput_share": 0.988,
+    "by_tenant": {
+      "batch": {
+        "offered_per_min": 42.5,
+        "goodput_per_min": 42.5
+      },
+      "interactive": {
+        "offered_per_min": 214.4,
+        "goodput_per_min": 211.3
+      }
+    },
+    "by_worker_goodput_per_min": {
+      "WorkerA": 253.8
+    },
+    "late_answers": 39,
+    "ttft_p50_ms": 3749
+  },
+  {
+    "run": "C",
+    "folder": "run_c",
+    "users": 48,
+    "through_gateway": true,
+    "minutes": 4.01,
+    "offered_per_min": 320.4,
+    "answered_per_min": 188.9,
+    "goodput_per_min": 186.6,
+    "goodput_share": 0.582,
+    "by_tenant": {
+      "batch": {
+        "offered_per_min": 160.2,
+        "goodput_per_min": 65.8
+      },
+      "interactive": {
+        "offered_per_min": 160.2,
+        "goodput_per_min": 120.8
+      }
+    },
+    "by_worker_goodput_per_min": {
+      "WorkerA": 186.6
+    },
+    "late_answers": 9,
+    "ttft_p50_ms": 2396
+  },
+  {
+    "run": "D",
+    "folder": "run_d",
+    "users": 48,
+    "through_gateway": true,
+    "minutes": 12.15,
+    "offered_per_min": 660.9,
+    "answered_per_min": 165.1,
+    "goodput_per_min": 165.1,
+    "goodput_share": 0.25,
+    "by_tenant": {
+      "batch": {
+        "offered_per_min": 55.2,
+        "goodput_per_min": 21.7
+      },
+      "interactive": {
+        "offered_per_min": 605.7,
+        "goodput_per_min": 143.3
+      }
+    },
+    "by_worker_goodput_per_min": {
+      "WorkerA": 77.9,
+      "WorkerB": 87.2
+    },
+    "late_answers": 0,
+    "ttft_p50_ms": 584
+  },
+  {
+    "run": "E",
+    "folder": "run_e",
+    "users": 48,
+    "through_gateway": true,
+    "minutes": 2.0,
+    "offered_per_min": 477.5,
+    "answered_per_min": 152.7,
+    "goodput_per_min": 152.7,
+    "goodput_share": 0.32,
+    "by_tenant": {
+      "interactive": {
+        "offered_per_min": 477.5,
+        "goodput_per_min": 152.7
+      }
+    },
+    "by_worker_goodput_per_min": {
+      "WorkerA": 73.6,
+      "WorkerB": 79.1
+    },
+    "late_answers": 0,
+    "ttft_p50_ms": 546
+  },
+  {
+    "run": "F",
+    "folder": "run_f",
+    "users": 64,
+    "through_gateway": true,
+    "minutes": 3.11,
+    "offered_per_min": 490.6,
+    "answered_per_min": 490.6,
+    "goodput_per_min": 490.6,
+    "goodput_share": 1.0,
+    "by_tenant": {
+      "batch": {
+        "offered_per_min": 245.3,
+        "goodput_per_min": 245.3
+      },
+      "interactive": {
+        "offered_per_min": 245.3,
+        "goodput_per_min": 245.3
+      }
+    },
+    "by_worker_goodput_per_min": {
+      "WorkerA": 242.8,
+      "WorkerB": 247.9
+    },
+    "late_answers": 0,
+    "ttft_p50_ms": 510
+  },
+  {
+    "run": "G",
+    "folder": "run_g",
+    "users": 96,
+    "through_gateway": true,
+    "minutes": 4.09,
+    "offered_per_min": 671.7,
+    "answered_per_min": 322.0,
+    "goodput_per_min": 321.3,
+    "goodput_share": 0.478,
+    "by_tenant": {
+      "batch": {
+        "offered_per_min": 335.7,
+        "goodput_per_min": 130.8
+      },
+      "interactive": {
+        "offered_per_min": 336.0,
+        "goodput_per_min": 190.5
+      }
+    },
+    "by_worker_goodput_per_min": {
+      "WorkerA": 165.3,
+      "WorkerB": 156.2
+    },
+    "late_answers": 3,
+    "ttft_p50_ms": 987
+  },
+  {
+    "run": "F2",
+    "folder": "run_f2",
+    "users": 128,
+    "through_gateway": true,
+    "minutes": 3.11,
+    "offered_per_min": 836.6,
+    "answered_per_min": 585.2,
+    "goodput_per_min": 577.8,
+    "goodput_share": 0.691,
+    "by_tenant": {
+      "batch": {
+        "offered_per_min": 418.1,
+        "goodput_per_min": 292.9
+      },
+      "interactive": {
+        "offered_per_min": 418.5,
+        "goodput_per_min": 284.9
+      }
+    },
+    "by_worker_goodput_per_min": {
+      "WorkerA": 293.2,
+      "WorkerB": 287.8
+    },
+    "late_answers": 23,
+    "ttft_p50_ms": 874
+  },
+  {
+    "run": "H1",
+    "folder": "run_h1",
+    "users": 48,
+    "through_gateway": true,
+    "minutes": 4.15,
+    "offered_per_min": 500.3,
+    "answered_per_min": 297.2,
+    "goodput_per_min": 294.3,
+    "goodput_share": 0.588,
+    "by_tenant": {
+      "interactive": {
+        "offered_per_min": 500.3,
+        "goodput_per_min": 294.3
+      }
+    },
+    "by_worker_goodput_per_min": {
+      "WorkerA": 155.6,
+      "WorkerB": 138.7
+    },
+    "late_answers": 12,
+    "ttft_p50_ms": 537
+  },
+  {
+    "run": "H2",
+    "folder": "run_h2",
+    "users": 48,
+    "through_gateway": true,
+    "minutes": 4.0,
+    "offered_per_min": 471.8,
+    "answered_per_min": 341.8,
+    "goodput_per_min": 341.8,
+    "goodput_share": 0.724,
+    "by_tenant": {
+      "interactive": {
+        "offered_per_min": 471.8,
+        "goodput_per_min": 341.8
+      }
+    },
+    "by_worker_goodput_per_min": {
+      "WorkerA": 144.8,
+      "WorkerB": 197.0
+    },
+    "late_answers": 0,
+    "ttft_p50_ms": 499
+  },
+  {
+    "run": "I",
+    "folder": "run_i",
+    "users": 96,
+    "through_gateway": true,
+    "minutes": 4.14,
+    "offered_per_min": 636.3,
+    "answered_per_min": 323.8,
+    "goodput_per_min": 322.6,
+    "goodput_share": 0.507,
+    "by_tenant": {
+      "batch": {
+        "offered_per_min": 318.0,
+        "goodput_per_min": 130.1
+      },
+      "interactive": {
+        "offered_per_min": 318.2,
+        "goodput_per_min": 192.5
+      }
+    },
+    "by_worker_goodput_per_min": {
+      "Overflow": 9.7,
+      "WorkerA": 160.7,
+      "WorkerB": 152.7
+    },
+    "late_answers": 5,
+    "ttft_p50_ms": 1084
+  }
+]
