@@ -25,6 +25,8 @@ DEFAULT_AVG_UNCACHED = 1200   # before the scrape gives a hit rate (Part 1: 1,17
 COMPLETION_WINDOW_S = 30.0    # completion rate = gateway completions per worker over this window
 COMPLETION_FLOOR = 0.5        # completions per second, never lower (Step 5a)
 COMPLETION_MIN_SPAN_S = 5.0   # right after start, divide by at least this many seconds
+COMPLETION_SEED = 4.0         # per worker, until COMPLETION_MIN_SEEN completions exist (baseline B mixed: 1,071 in 4.16 min = 4.3/s)
+COMPLETION_MIN_SEEN = 10      # run E: with no completions yet, the 0.5/s floor shed 14 requests in the first 7 s
 DEFAULT_SLOTS = 32            # --max-num-seqs (Part 1); the gateway's in-flight cap per worker
 
 
@@ -67,8 +69,16 @@ class TenantWindow:
             q.popleft()
         return q
 
-    def charge(self, tenant: str, tokens: int, now: float) -> None:
-        self._trim(tenant, now).append((now, tokens))
+    def charge(self, tenant: str, tokens: int, now: float) -> list:
+        """Charge tokens now. Returns the charge, so refund() can lower it later."""
+        event = [now, tokens]
+        self._trim(tenant, now).append(event)
+        return event
+
+    @staticmethod
+    def refund(event: list, tokens: int) -> None:
+        """Give back unused tokens of an earlier charge (it stays at its original time)."""
+        event[1] = max(0, event[1] - tokens)
 
     def total(self, tenant: str, now: float) -> int:
         return sum(t for _, t in self._trim(tenant, now))
@@ -159,6 +169,8 @@ class SnapshotSource:
         q = self._completions.get(worker, deque())
         while q and q[0] < now - COMPLETION_WINDOW_S:
             q.popleft()
+        if len(q) < COMPLETION_MIN_SEEN:        # too few completions to measure: use the seed
+            return COMPLETION_SEED
         span = max(COMPLETION_MIN_SPAN_S, min(COMPLETION_WINDOW_S, now - self.start))
         return max(COMPLETION_FLOOR, len(q) / span)
 

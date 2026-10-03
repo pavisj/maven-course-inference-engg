@@ -73,9 +73,15 @@ ENGINE_ARGS = [
 # eager mode skips compile and CUDA graph capture: faster boot, slower decode
 ENGINE_ARGS += ["--enforce-eager" if FAST_BOOT else "--no-enforce-eager"]
 
-PRESSURE_ARGS = {                       # run F: replaces these flags' values when ENGINE_PROFILE=pressure
-    "--gpu-memory-utilization": "0.5",  # half the memory -> a much smaller KV cache
-    "--max-num-seqs": "64",             # twice the decode slots -> more sequences competing for KV
+PROFILES = {                            # ENGINE_PROFILE -> flag values that replace the normal ones
+    "pressure": {                       # run F: KV 126,496 tokens per worker; 64 users reached only 36 % KV
+        "--gpu-memory-utilization": "0.5",
+        "--max-num-seqs": "64",
+    },
+    "pressure2": {                      # run F2: smaller still, so 64 sequences per worker overflow the KV cache
+        "--gpu-memory-utilization": "0.4",
+        "--max-num-seqs": "64",
+    },
 }
 
 # Overflow: a smaller model on its own A10, started only when a request leaves the cluster (Step 8).
@@ -95,9 +101,8 @@ OVERFLOW_ARGS = [
 
 def engine_args(profile: str) -> list[str]:
     args = list(ENGINE_ARGS)
-    if profile == "pressure":
-        for flag, value in PRESSURE_ARGS.items():
-            args[args.index(flag) + 1] = value
+    for flag, value in PROFILES.get(profile, {}).items():
+        args[args.index(flag) + 1] = value
     return args
 
 

@@ -4,6 +4,7 @@ should_shed(req, snap, rng) -> (shed, code, reason, retry_after_seconds)
 
 Four tests, in this order; the first match wins:
 1. tenant_tokens  one tenant's tokens in the last 60 s would pass its window
+                  (per-worker window x warm workers; unused answer budget is refunded on completion)
 2. timeout_queue  the estimated TTFT is already past the tenant's deadline
 3. kv_free        the request's KV blocks would push KV usage past 85 %
 4. over_cap       batch: 8 or more requests already wait for this worker;
@@ -22,10 +23,13 @@ from dataclasses import dataclass
 from control.snapshot import COMPLETION_FLOOR, Snapshot
 
 # tenant_tokens
-TENANT_WINDOW_TOKENS = {"interactive": 400_000, "batch": 150_000}
-#   Baseline B, mixed mix, charged prompt + max_tokens per minute: interactive 337,306, batch 290,105.
+TENANT_WINDOW_TOKENS = {"interactive": 400_000, "batch": 150_000}   # PER WARM WORKER (since Step 5, run D)
+#   Baseline B (one worker), mixed mix, charged prompt + max_tokens per minute: interactive 337,306, batch 290,105.
 #   400,000 gives interactive about 19 % headroom; 150,000 holds batch to about half its baseline-B demand.
+#   Run D showed one-worker windows on two workers shed 75 % of all requests, so the window is
+#   multiplied by the number of warm workers: two warm workers -> 800,000 and 300,000.
 TENANT_WINDOW_S = 60.0           # sliding window length (the brief's "tenant window")
+MIN_TENANT_RETRY_S = 2.0         # run D: sub-second retries made 8,027 requests for 2,005 admitted
 
 # timeout_queue: est_ttft = max(Little's law, prefill backlog)
 DEADLINE_S = {"interactive": 6.0, "batch": 60.0}
@@ -59,6 +63,12 @@ class AdmitRequest:
     prompt_tokens: int
     max_tokens: int
     worker: str = TARGET
+
+
+def tenant_window(snap: Snapshot, tenant: str) -> int:
+    """The tenant's window: per-worker tokens x the number of warm workers (at least 1)."""
+    warm = sum(1 for v in snap.warm.values() if v)
+    return TENANT_WINDOW_TOKENS[tenant] * max(1, warm)
 
 
 def little_ttft(snap: Snapshot, worker: str) -> float:
@@ -107,10 +117,11 @@ def should_shed(req: AdmitRequest, snap: Snapshot, rng=random) -> tuple[bool, in
 
     # 1. tenant_tokens
     used = snap.tenant_tokens_60s.get(req.tenant, 0)
-    window = TENANT_WINDOW_TOKENS[req.tenant]
+    window = tenant_window(snap, req.tenant)
     if used + need > window:
         events = snap.tenant_events.get(req.tenant, ())
-        return True, 429, "tenant_tokens", _jitter(tenant_retry_after(events, used, need, window, snap.ts), rng)
+        retry = _jitter(tenant_retry_after(events, used, need, window, snap.ts), rng)
+        return True, 429, "tenant_tokens", max(MIN_TENANT_RETRY_S, retry)
 
     # 2. timeout_queue
     ttft = est_ttft(snap, req.worker)

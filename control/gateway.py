@@ -37,7 +37,7 @@ from control.hop import HopLog
 from control.overflow import (STAY_RETRY_S, VIA_HEADER, VIA_NONE, VIA_OVERFLOW, OverflowLimiter, classify)
 from control.place import DEFAULT_POLICY, POLICIES, PlaceRequest, Shed, pick, views_from_snapshot
 from control.queue import DEFAULT_MAX_IN_FLIGHT, WorkerQueue
-from control.snapshot import SnapshotSource
+from control.snapshot import SnapshotSource, TenantWindow
 
 ROOT = Path(__file__).resolve().parent.parent
 HOST, PORT = "127.0.0.1", 8765
@@ -134,11 +134,17 @@ def create_app(workers: dict[str, str], out_dir: Path, overflow_url: str | None 
 
     def stream_out(up, row: dict, start: float, on_done, via: str | None = None) -> StreamingResponse:
         async def relay():
-            ttft, outcome = None, "ok"
+            ttft, outcome, out_tokens = None, "ok", None
             try:
                 async for line in up.aiter_lines():
                     if ttft is None and first_content(line):
                         ttft = round(time.perf_counter() - start, 4)
+                    if '"usage"' in line and line.startswith("data: "):
+                        try:
+                            usage = json.loads(line[6:]).get("usage") or {}
+                            out_tokens = usage.get("completion_tokens", out_tokens)
+                        except json.JSONDecodeError:
+                            pass
                     yield line + "\n"
             except asyncio.CancelledError:
                 outcome = "client_gone"            # closing the upstream below makes vLLM abort and free the KV
@@ -148,8 +154,8 @@ def create_app(workers: dict[str, str], out_dir: Path, overflow_url: str | None 
                 outcome = f"upstream_error: {type(e).__name__}"
             finally:
                 await up.aclose()
-                on_done(outcome)
-                record(**row, ttft_measured=ttft, status=200, outcome=outcome, via=via,
+                on_done(outcome, out_tokens)
+                record(**row, ttft_measured=ttft, status=200, outcome=outcome, via=via, output_tokens=out_tokens,
                        total_s=round(time.perf_counter() - start, 4))
         headers = {VIA_HEADER: via} if via else {}
         return StreamingResponse(relay(), media_type="text/event-stream", headers=headers)
@@ -167,7 +173,7 @@ def create_app(workers: dict[str, str], out_dir: Path, overflow_url: str | None 
         result = await open_upstream(overflow_url, payload)
         if result[0] == "stream":
             c["overflow"]["served"] += 1
-            return stream_out(result[1], {**row, "worker": "Overflow"}, start, lambda outcome: None, via=VIA_OVERFLOW)
+            return stream_out(result[1], {**row, "worker": "Overflow"}, start, lambda outcome, out: None, via=VIA_OVERFLOW)
         c["overflow"]["unavailable"] += 1
         record(**row, worker="Overflow", status=result[0], outcome="overflow_unavailable", via=VIA_OVERFLOW)
         return Response(result[1], status_code=result[0], headers={VIA_HEADER: VIA_OVERFLOW})
@@ -195,6 +201,7 @@ def create_app(workers: dict[str, str], out_dir: Path, overflow_url: str | None 
         row.update(prompt_tokens=guard.prompt_tokens, max_tokens=guard.max_tokens)
         payload["max_tokens"] = guard.max_tokens
         payload["stream"] = True                       # the gateway always streams from the worker
+        payload["stream_options"] = {"include_usage": True}   # the last chunk reports real output tokens (refund)
 
         # 2. place (no state changes until admit passes)
         snap = source.current(t0)
@@ -215,7 +222,7 @@ def create_app(workers: dict[str, str], out_dir: Path, overflow_url: str | None 
             record(**row, decision="shed", reason=reason, stage="admit", status=code, retry_after=retry)
             return JSONResponse({"reason": reason, "retry_after_seconds": retry}, status_code=code,
                                 headers={"Retry-After": str(max(1, math.ceil(retry)))})
-        source.tenants.charge(tenant, guard.prompt_tokens + guard.max_tokens, t0)
+        charge = source.tenants.charge(tenant, guard.prompt_tokens + guard.max_tokens, t0)
         source.record_prompt(guard.prompt_tokens, t0)
         c["placed"][worker] += 1
         if placement.hopped:
@@ -242,16 +249,19 @@ def create_app(workers: dict[str, str], out_dir: Path, overflow_url: str | None 
 
         # 5. forward, 6. overflow gate
         def done(w, wq):
-            def _done(outcome):
+            def _done(outcome, out_tokens):
                 wq.release()
                 if outcome == "ok":
                     source.record_completion(w, time.time())
+                if out_tokens is not None:             # refund the answer budget it did not use
+                    TenantWindow.refund(charge, guard.max_tokens - out_tokens)
             return _done
 
         result = await open_upstream(workers[worker], payload)
         if result[0] == "stream":
             return stream_out(result[1], row, start, done(worker, q))
         q.release()
+        TenantWindow.refund(charge, guard.max_tokens)  # no answer was produced
         status, body, headers = result
         verdict = classify(status, body)
         if verdict == "stay":

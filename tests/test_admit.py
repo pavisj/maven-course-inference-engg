@@ -116,6 +116,34 @@ def test_first_match_wins():
     assert shed(interactive(), s)[2] == "tenant_tokens"
 
 
+def test_tenant_window_scales_with_warm_workers():
+    from control.admit import tenant_window
+    two = Snapshot(workers={}, warm={"WorkerA": True, "WorkerB": True}, ts=NOW)
+    one = Snapshot(workers={}, warm={"WorkerA": True, "WorkerB": False}, ts=NOW)
+    none = Snapshot(workers={}, warm={}, ts=NOW)
+    assert tenant_window(two, "interactive") == 800_000 and tenant_window(two, "batch") == 300_000
+    assert tenant_window(one, "interactive") == 400_000 and tenant_window(none, "batch") == 150_000
+
+
+def test_tenant_tokens_retry_floor():
+    # the oldest charge leaves the window in 0.5 s, but a retry is never sooner than 2 s
+    s = snap(tokens={"batch": 149_000}, events={"batch": ((NOW - 59.5, 149_000),)})
+    assert shed(batch(), s) == (True, 429, "tenant_tokens", 2.0)
+
+
+def test_tenant_refund_and_completion_seed():
+    from control.snapshot import COMPLETION_SEED, SnapshotSource, TenantWindow
+    w = TenantWindow(60)
+    charge = w.charge("interactive", 2_612, now=100.0)
+    TenantWindow.refund(charge, 512 - 170)          # 170 of 512 answer tokens used
+    assert w.total("interactive", now=101.0) == 2_270
+    src = SnapshotSource({"WorkerA": "http://127.0.0.1:1"})
+    assert src.completion_rate("WorkerA", now=src.start + 1) == COMPLETION_SEED   # no completions yet
+    for i in range(30):
+        src.record_completion("WorkerA", src.start + 1 + i * 0.5)
+    assert src.completion_rate("WorkerA", now=src.start + 16) == pytest.approx(30 / 16)
+
+
 def test_retry_after_jitter_range():
     s = snap(kv=90.0)
     rng = random.Random(7)
