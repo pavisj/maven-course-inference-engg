@@ -4,8 +4,9 @@
     python -m app.tutor "..." --tenant batch --base-url https://...workera...modal.direct
 
 --base-url defaults to WorkerA in cluster/workers.json, so the baselines stay reproducible.
-For the gateway, pass --base-url http://127.0.0.1:8765. Every request sends the X-Tenant header;
-the worker ignores it, the gateway uses it. A 429 or 400 from the gateway records its reason
+For the gateway, pass --base-url http://127.0.0.1:8765. Every request sends the X-Tenant header
+and the X-Chapter header (file prefix of the top-ranked chunk, the placement key); the worker
+ignores both, the gateway uses them. A 429 or 400 from the gateway records its reason
 and retry_after_seconds.
 Logs one JSON row per call to metrics/app_calls.jsonl: TTFT, prompt tokens, output tokens.
 
@@ -53,6 +54,8 @@ def call_tutor(question: str, tenant: str, base_url: str, max_tokens: int | None
     """
     max_tokens = max_tokens or MAX_TOKENS[tenant]
     chunks = retrieve(question, chapter=chapter)
+    # prefix key for placement: the file prefix of the top-ranked chunk (00, 03a, 03b, 05, 06, 06b, 07, 09, 10)
+    top_chapter = chunks[0]["filename"].split("-", 1)[0] if chunks else ""
     payload = {
         "model": SERVED_MODEL_NAME,
         "messages": build_messages(question, chunks),
@@ -67,6 +70,7 @@ def call_tutor(question: str, tenant: str, base_url: str, max_tokens: int | None
         "max_tokens": max_tokens,
         "question": question,
         "chapter_filter": chapter,
+        "top_chapter": top_chapter,
         "base_url": base_url,
         "chunk_ids": [c["id"] for c in chunks],
         "chapters": sorted({c["chapter"] for c in chunks}),
@@ -82,7 +86,8 @@ def call_tutor(question: str, tenant: str, base_url: str, max_tokens: int | None
     start = time.perf_counter()
     try:
         with httpx.stream("POST", f"{base_url.rstrip('/')}/v1/chat/completions",
-                          json=payload, headers={"X-Tenant": tenant}, timeout=timeout_s) as r:
+                          json=payload, headers={"X-Tenant": tenant, "X-Chapter": top_chapter},
+                          timeout=timeout_s) as r:
             record["status"] = r.status_code
             if r.status_code != 200:
                 text = r.read().decode(errors="replace")
