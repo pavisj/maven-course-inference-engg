@@ -153,9 +153,11 @@ def ttft_by_mix(traffic, label, out_dir):
     print(f"wrote {out_dir / 'ttft_by_mix.png'}")
 
 
-def est_vs_measured(gateway_rows, label, out_dir):
+def est_vs_measured(gateway_rows, label, out_dir, offset: float = 0.0, name: str = "est_vs_measured_ttft"):
     rows = [r for r in gateway_rows if r.get("decision") == "ok" and r.get("est_ttft") is not None
             and r.get("ttft_measured") is not None]
+    if offset:
+        rows = [{**r, "ttft_measured": max(0.0, r["ttft_measured"] - offset)} for r in rows]
     if not rows:
         print("skip est_vs_measured_ttft: no admitted gateway rows")
         return
@@ -168,14 +170,18 @@ def est_vs_measured(gateway_rows, label, out_dir):
     top = max(max(r["est_ttft"] for r in rows), max(r["ttft_measured"] for r in rows))
     ax.plot([0, top], [0, top], color="#888888", linestyle="--", linewidth=1, label="estimate = measured")
     ax.set_xlabel("est_ttft at the admit decision (s)")
-    ax.set_ylabel("TTFT measured at the gateway, from arrival (s)")
-    ax.set_title(title("Estimated vs measured TTFT", label))
+    if offset:
+        ax.set_ylabel(f"TTFT at the gateway minus the {offset * 1000:.0f} ms network trip (s)")
+        ax.set_title(title("Estimated vs measured TTFT, network trip removed", label))
+    else:
+        ax.set_ylabel("TTFT measured at the gateway, from arrival (s)")
+        ax.set_title(title("Estimated vs measured TTFT", label))
     ax.legend(fontsize=8)
     ax.grid(alpha=0.3)
     fig.tight_layout()
-    fig.savefig(out_dir / "est_vs_measured_ttft.png", dpi=120)
+    fig.savefig(out_dir / f"{name}.png", dpi=120)
     plt.close(fig)
-    print(f"wrote {out_dir / 'est_vs_measured_ttft.png'}")
+    print(f"wrote {out_dir / (name + '.png')}")
 
 
 def gateway_queue(scrape, windows, label, out_dir):
@@ -228,6 +234,10 @@ def main():
     gateway_rows = load_jsonl(sorted(args.run_dir.glob("gateway_requests.jsonl")))
     if gateway_rows:
         est_vs_measured(gateway_rows, args.label, args.out_dir)
+        offset_file = ROOT / "metrics" / "network_offset.json"
+        if offset_file.exists():
+            offset = json.loads(offset_file.read_text())["offset_s"]
+            est_vs_measured(gateway_rows, args.label, args.out_dir, offset=offset, name="est_vs_measured_ttft_minus_trip")
         gateway_queue(scrape, windows, args.label, args.out_dir)
 
 

@@ -59,6 +59,8 @@ def main(folder: Path) -> dict:
         if v:
             out["gateway_ttft_ms"][t] = {"p50": ms(pct(v, 50)), "p95": ms(pct(v, 95))}
     pairs = [(r["est_ttft"], r["ttft_measured"]) for r in m if r.get("est_ttft") is not None]
+    offset_file = folder.parent / "network_offset.json"
+    offset = json.loads(offset_file.read_text())["offset_s"] if offset_file.exists() else None
     if pairs:
         ratio = [mt / es for es, mt in pairs if es > 0]
         out["est_vs_measured"] = {
@@ -68,6 +70,12 @@ def main(folder: Path) -> dict:
             "within_50pct": round(sum(1 for e, x in pairs if abs(x - e) <= 0.5 * max(e, x)) / len(pairs), 3),
             "queue_wait_p95_s": round(pct([r.get("queue_wait_s") for r in ok], 95) or 0, 3),
         }
+        if offset is not None:     # the estimate predicts engine TTFT; take the laptop -> worker trip out
+            net = [(e, max(0.0, x - offset)) for e, x in pairs]
+            out["est_vs_measured"].update(
+                network_offset_s=offset,
+                measured_minus_trip_p50_s=round(pct([x for _, x in net], 50), 3),
+                within_50pct_minus_trip=round(sum(1 for e, x in net if abs(x - e) <= 0.5 * max(e, x)) / len(net), 3))
 
     # overflow (Step 12 capacity overflow and Step 8 failure overflow)
     ov = [r for r in gw if r["decision"] == "overflow"]
