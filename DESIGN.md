@@ -73,6 +73,9 @@ Interactive questions measured: Little's Law and admission control; why prefix c
   - Measured hint: a warm cache miss of 495 prompt tokens took 53 to 84 ms of engine TTFT (`metrics/warmup_WorkerA_warm.json`, `metrics/warmup_WorkerB_warm.json`). That is roughly 6,000 to 9,000 prompt tokens per second per worker (**verify**: one request at a time, not under load).
 - At 48 users (the rehearsal load), up to 48 requests are in flight against 32 slots, so about 16 should wait in the engine queue at peak (**verify**: `vllm:num_requests_waiting` in the rehearsal scrape).
 
+Hypothesis: KV first. Result: max_num_seqs=32 bound first, then compute (TTFT), KV peaked at 14.5 %; KV would bind near 140 sequences.
+
+
 ## Part 2. Design the cluster
 
 ### 1. GPU
@@ -443,6 +446,8 @@ Run I: run G's load (96 users, `mixed`, 4 min, normal engine), with capacity ove
 | Goodput (answered within deadline per minute) | 321.3 | 322.6 (Overflow 9.7 of it) |
 
 - Overflow answered as fast as the cluster: its p95 was 2,143 ms against the cluster's 2,187 ms. The 1.5B model has less to compute per token.
+- **Per prompt token (E1), Overflow was slower, not equal.** Both prompt medians were about 2,120 tokens. With the trip removed, Overflow took 313 ms per 1,000 prompt tokens (p50), the cluster 195 ms. The cluster reuses its prefix cache (69 % hits); Overflow starts each prompt cold. Every Overflow TTFT with its prompt tokens: `metrics/overflow_per_token.json` (run I: 40 requests, run J: 10).
+- **Retries (E1):** the Step 8 retry ("503 → the other worker once → Overflow") now sets `retried_once=true` on the row and counts `gateway_retry_total{src,dst}`. Count in runs C to M2: **0**. No worker answered 503 or 529.
 - The limiter, not Overflow, is the bottleneck: 93 % of interactive `over_cap` requests still got the 429.
 - **Went wrong:** 20 interactive `timeout_queue` sheds in the first 7.6 to 10.6 s. After the 10th completion, the rate divided by the time since the gateway started, which included the 12 s warm-up wait. Fixed after run I (rate span from the first completion, with a test), not re-measured on GPU.
 
@@ -630,32 +635,6 @@ Run J had 0 admit-stage `timeout_queue` sheds after its first 15 s. Its only lat
 - Run M2's goodput at its own 3 s deadline: 416.1 per minute.
 - **Run M has the best goodput of the four, with 0 sheds and both tenants served.** At 64 users the two workers are full but not over. At 96 users the extra 32 users add sheds and retries, not answers.
 
-### Goodput
-
-goodput = requests answered within deadline per minute: status 200 and the **first token** within the deadline from arrival (interactive 6 s, batch 60 s; the same deadlines admit and the queue use). Shed, failed or late = 0. Arrival is when the client sent the request, so the client-side TTFT counts. `metrics/goodput.json`, `plots/goodput_vs_offered.png`.
-
-| Run | Users | Offered / min | Goodput / min | Share | Interactive / batch goodput | Per worker (A / B) | Late |
-|---|---|---|---|---|---|---|---|
-| A | 8 | 96.9 | 96.9 | 100 % | 81.2 / 15.6 | 96.9 / direct | 0 |
-| B | 48 | 256.9 | 253.8 | 99 % | 211.3 / 42.5 | 253.8 / direct | 39 |
-| C | 48 | 320.4 | 186.6 | 58 % | 120.8 / 65.8 | 186.6 / none | 9 |
-| D | 48 | 660.9 | 165.1 | 25 % | 143.3 / 21.7 | 77.9 / 87.2 | 0 |
-| E | 48 | 477.5 | 152.7 | 32 % | 152.7 / none | 73.6 / 79.1 | 0 |
-| F | 64 | 490.6 | 490.6 | 100 % | 245.3 / 245.3 | 242.8 / 247.9 | 0 |
-| G | 96 | 671.7 | 321.3 | 48 % | 190.5 / 130.8 | 165.3 / 156.2 | 3 |
-| F2 | 128 | 836.6 | 577.8 | 69 % | 284.9 / 292.9 | 293.2 / 287.8 | 23 |
-| H1 | 48 | 500.3 | 294.3 | 59 % | 294.3 / none | 155.6 / 138.7 | 12 |
-| H2 | 48 | 471.8 | 341.8 | 72 % | 341.8 / none | 144.8 / 197.0 | 0 |
-| I | 96 | 636.3 | 322.6 | 51 % | 192.5 / 130.1 | 160.7 / 152.7 (+ Overflow 9.7) | 5 |
-| J | 96 | 864.0 | 432.0 | 50 % | 424.6 / 7.4 | 214.7 / 214.9 (+ Overflow 2.4) | 0 |
-| M | 64 | 487.0 | 487.0 | 100 % | 243.7 / 243.4 | 241.4 / 245.6 | 0 |
-| M2 | 96 | 1,034.9 | 424.6 | 41 % | 404.5 / 20.1 | 213.6 / 211.1 | 5 |
-
-- Offered load includes retries after a 429, so a run that sheds more offers more.
-- Runs F and F2 used tenant windows ×10 (KV tests): their goodput shows what the two workers can deliver without tenant limits, about 490 to 580 per minute.
-- Late answers stay small (0 to 23 per run): the gateway sheds work it cannot finish in time instead of answering late.
-- **Run J has the highest goodput at 96 users, but 98 % of it is interactive.** Goodput per minute does not show tenant fairness or the TTFT inside the deadline. Read it with goodput by tenant and TTFT p50.
-
 ### Policy ledger
 
 | Stage | Condition | Action | Constant | Source | Run that tested it | Goodput effect | Alert |
@@ -681,6 +660,33 @@ goodput = requests answered within deadline per minute: status 200 and the **fir
 | overflow | 429, 500 or out of memory from a worker | stay: return with Retry-After | 2 s | Step 8 | unit tests | none measured | 500 rate > 0 |
 | overflow | 503 or 529 from a worker | the other worker once, then Overflow | 10 per minute | Step 8 | unit tests; Overflow check | none measured (no 503 in runs) | any engine 503 |
 | overflow | interactive `over_cap` (capacity) | Overflow under the limiter | 10 per minute | AMA whiteboard | I (40 sent), J (10 sent) | +9.7 goodput / min; replay 10 → 30: +20 / min; J: 29 attempts, so the limiter barely matters at 4 s | overflow limited > 0 for 5 min |
+
+### Goodput
+
+goodput = requests answered within deadline per minute: status 200 and the **first token** within the deadline from arrival (interactive 6 s, batch 60 s; the same deadlines admit and the queue use). Shed, failed or late = 0. Arrival is when the client sent the request, so the client-side TTFT counts. `metrics/goodput.json`, `plots/goodput_vs_offered.png`.
+
+| Run | Users | Offered / min | Goodput / min | Share | Interactive / batch goodput | Per worker (A / B) | Late | Late (gateway, run's deadline) / wasted engine s |
+|---|---|---|---|---|---|---|---|---|
+| A | 8 | 96.9 | 96.9 | 100 % | 81.2 / 15.6 | 96.9 / direct | 0 | n/a (no gateway) |
+| B | 48 | 256.9 | 253.8 | 99 % | 211.3 / 42.5 | 253.8 / direct | 39 | n/a (no gateway) |
+| C | 48 | 320.4 | 186.6 | 58 % | 120.8 / 65.8 | 186.6 / none | 9 | 9 / 131.4 |
+| D | 48 | 660.9 | 165.1 | 25 % | 143.3 / 21.7 | 77.9 / 87.2 | 0 | 0 / 0 |
+| E | 48 | 477.5 | 152.7 | 32 % | 152.7 / none | 73.6 / 79.1 | 0 | 0 / 0 |
+| F | 64 | 490.6 | 490.6 | 100 % | 245.3 / 245.3 | 242.8 / 247.9 | 0 | 0 / 0 |
+| G | 96 | 671.7 | 321.3 | 48 % | 190.5 / 130.8 | 165.3 / 156.2 | 3 | 2 / 12.1 |
+| F2 | 128 | 836.6 | 577.8 | 69 % | 284.9 / 292.9 | 293.2 / 287.8 | 23 | 13 / 186.9 |
+| H1 | 48 | 500.3 | 294.3 | 59 % | 294.3 / none | 155.6 / 138.7 | 12 | 12 / 325.9 |
+| H2 | 48 | 471.8 | 341.8 | 72 % | 341.8 / none | 144.8 / 197.0 | 0 | 0 / 0 |
+| I | 96 | 636.3 | 322.6 | 51 % | 192.5 / 130.1 | 160.7 / 152.7 (+ Overflow 9.7) | 5 | 3 / 30.0 |
+| J | 96 | 864.0 | 432.0 | 50 % | 424.6 / 7.4 | 214.7 / 214.9 (+ Overflow 2.4) | 0 | 0 / 0 |
+| M | 64 | 487.0 | 487.0 | 100 % | 243.7 / 243.4 | 241.4 / 245.6 | 0 | 21 / 177.0 |
+| M2 | 96 | 1,034.9 | 424.6 | 41 % | 404.5 / 20.1 | 213.6 / 211.1 | 5 | 101 / 818.8 |
+
+- Offered load includes retries after a 429, so a run that sheds more offers more.
+- Runs F and F2 used tenant windows ×10 (KV tests): their goodput shows what the two workers can deliver without tenant limits, about 490 to 580 per minute.
+- Late answers stay small (0 to 23 per run): the gateway sheds work it cannot finish in time instead of answering late.
+- **Wasted engine seconds (E2)** = engine time on answers whose first token came after the deadline: gateway total time − queue wait − network trip, summed (`wasted_engine_seconds` in `metrics/goodput.json`). It uses the gateway log and each run's own deadline (M and M2: 3 s), so its late count can differ from the client-side "Late" column. Run G: 2 late at the gateway, 12.1 s; the client saw 3, 15.8 s (Runs L and M).
+- **Run J has the highest goodput at 96 users, but 98 % of it is interactive.** Goodput per minute does not show tenant fairness or the TTFT inside the deadline. Read it with goodput by tenant and TTFT p50.
 
 ### What-if replay (first-order)
 

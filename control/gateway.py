@@ -76,7 +76,7 @@ def create_app(workers: dict[str, str], out_dir: Path, overflow_url: str | None 
     out_dir.mkdir(parents=True, exist_ok=True)
     log = (out_dir / "gateway_requests.jsonl").open("a")
     warm_log = (out_dir / "warm_events.jsonl").open("a")
-    c = {k: defaultdict(int) for k in ("sheds", "guard", "requests", "aborts", "overflow", "placed")}
+    c = {k: defaultdict(int) for k in ("sheds", "guard", "requests", "aborts", "overflow", "placed", "retries")}
     warming: dict[str, asyncio.Task] = {}
     next_warm_try: dict[str, float] = {}
 
@@ -96,7 +96,9 @@ def create_app(workers: dict[str, str], out_dir: Path, overflow_url: str | None 
             if res.get("warm"):
                 source.warm[name] = True
                 source.restarted.discard(name)
+                source.affinity.restore(name)
                 return
+        source.affinity.evict(name, source.warm, "warm_probe_failed")   # failed every round: drop affinity and warm
         next_warm_try[name] = time.time() + WARM_RETRY_S
 
     def on_refresh() -> None:
@@ -314,6 +316,8 @@ def create_app(workers: dict[str, str], out_dir: Path, overflow_url: str | None 
         others = [w for w in workers if w != worker and source.warm.get(w) and source.state.get(w) and source.state[w].ok]
         if others:
             other = others[0]
+            c["retries"][(worker, other)] += 1         # E1: the Step 8 retry, counted (gateway_retry_total)
+            row["retried_once"] = True
             oq = queues[other]
             oq.in_flight += 1                          # a direct retry: takes a seat without queueing
             hops.record(time.time(), worker, other, guard.prompt_tokens, chapter)
@@ -348,6 +352,10 @@ def create_app(workers: dict[str, str], out_dir: Path, overflow_url: str | None 
         for name, metric in (("gateway_queue_depth", snap.queue_depth), ("gateway_in_flight", snap.in_flight),
                              ("gateway_completion_rate", snap.completion_rate)):
             L += [f"# TYPE {name} gauge"] + [f'{name}{{worker="{w}"}} {metric.get(w, 0):.3f}' for w in workers]
+        L += ["# TYPE gateway_retry_total counter"]
+        L += [f'gateway_retry_total{{src="{s}",dst="{d}"}} {n}' for (s, d), n in sorted(c["retries"].items())]
+        L += [f"gateway_retry_all_total {sum(c['retries'].values())}"]
+        L += ["# TYPE gateway_affinity_evict_total counter", f"gateway_affinity_evict_total {source.affinity.evictions}"]
         L += ["# TYPE gateway_worker_warm gauge"] + [f'gateway_worker_warm{{worker="{w}"}} {int(snap.warm.get(w, False))}' for w in workers]
         L += ["# TYPE gateway_est_ttft_seconds gauge"] + [f'gateway_est_ttft_seconds{{worker="{w}"}} {est_ttft(snap, w):.3f}' for w in workers]
         L += ["# TYPE gateway_tenant_tokens_60s gauge"]

@@ -67,7 +67,30 @@ def run_goodput(folder: Path, label: str, users: int, gateway: bool) -> dict | N
     out["late_answers"] = sum(1 for r in traffic if r["status"] == 200 and r.get("ttft_s") is not None
                               and r["ttft_s"] > DEADLINE_S[r["tenant"]])
     out["ttft_p50_ms"] = round(statistics.median(ttft) * 1000) if ttft else None
+    out.update(wasted_engine_seconds(folder, gw))
     return out
+
+
+def wasted_engine_seconds(folder: Path, gw: list[dict]) -> dict:
+    """E2: engine time spent on answers whose first token came after the deadline (the user gave up).
+
+    From the gateway log: status 200 and ttft_measured (from arrival) past the run's deadline.
+    Engine-slot seconds = total_s - queue_wait_s - the network trip. The deadline is the run's own
+    (admit_settings.json: run M and M2 used 3 s for interactive). Baselines have no gateway log.
+    """
+    if not gw:
+        return {"late_gateway": None, "wasted_engine_seconds": None}
+    deadline = dict(DEADLINE_S)
+    settings = folder / "admit_settings.json"
+    if settings.exists():
+        deadline["interactive"] = json.loads(settings.read_text()).get("interactive_deadline_s", deadline["interactive"])
+    trip_file = folder / "network_offset.json"
+    trip_file = trip_file if trip_file.exists() else folder.parent / "network_offset.json"
+    trip = json.loads(trip_file.read_text())["offset_s"] if trip_file.exists() else 0.0
+    late = [r for r in gw if r.get("status") == 200 and r.get("ttft_measured") is not None and r.get("total_s") is not None
+            and r.get("tenant") in deadline and r["ttft_measured"] > deadline[r["tenant"]]]
+    secs = sum(max(0.0, r["total_s"] - (r.get("queue_wait_s") or 0.0) - trip) for r in late)
+    return {"late_gateway": len(late), "wasted_engine_seconds": round(secs, 1)}
 
 
 def main():
