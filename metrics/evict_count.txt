@@ -1,0 +1,4 @@
+gateway_affinity_evict_total
+test (tests/test_evict.py, fake worker, no GPU): 3  (unreachable 1, restart 1, warm_probe_failed 1)
+live runs C to M2: 0  (no worker failed all 3 warm-probe rounds or restarted while a gateway ran; replayed from each run's warm_events.jsonl: run H1 had one failed round, warm on the next)
+Nothing is copied between workers, so KV has nothing to evict; the ghost is a stale affinity or warm flag after a Modal container restart.

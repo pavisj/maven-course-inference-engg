@@ -387,6 +387,24 @@ Measured: in runs D, E and F, the gateway queue never held a request (max depth 
 - Run D: 561 hops, 1,179,270 prompt tokens recomputed away from their home worker.
 - Run E (all traffic on chapter 07, home WorkerB): 147 of 305 requests hopped to WorkerA; 310,030 tokens recomputed. WorkerB's prefix hit rate was 59.3 %, WorkerA's 61.2 %.
 
+**Hop cost (Step 17, `metrics/hop_cost.py`, `metrics/hops.json`, `plots/07_hops.png`).** Runs D to L, gateway TTFT from arrival, answered requests only. Runs D to G have no `policy` field; the gateway then always used `prefix_then_load`.
+
+| Policy | Hopped: n, TTFT p50 / p95 | Not hopped: n, TTFT p50 / p95 |
+|---|---|---|
+| `prefix_then_load` (D, E, F, F2, G, H2, I, J, L) | 4,717; 830 / 4,166 ms | 6,738; 745 / 4,025 ms |
+| `least_loaded` (H1) | 652; 528 / 1,974 ms | 580; 531 / 1,512 ms |
+
+- **Tokens recomputed per hop = prompt tokens − 431** (the system prompt, which every worker already caches). 5,382 hops recomputed 8,905,885 tokens: median 1,668 per hop. `metrics/hops.json` holds one record per hop: `run, src, dst, tokens, prefix, backend=recompute`.
+- **Under load a hop costs time:** run G hopped p50 1,168 ms against 905 ms at home; run I 1,268 against 1,031 ms. The hop recomputes about 1,700 tokens, and it happens when the home worker is already busy.
+- **At light load a hop costs nothing you can see:** in runs D, F, F2 and H2 hopped and home p50 are within 17 ms, and hopped p95 is lower. The hop goes to the less busy worker, which pays back the recompute.
+- The comparison is not a controlled test: `prefix_then_load` hops only when the home worker has 22 or more in flight, so hopped requests arrive at busier moments.
+
+**Evict (Step 17, `control/evict.py`, `gateway_affinity_evict_total`).** Nothing is copied, so KV has nothing to evict; the ghost is a stale affinity or warm flag after a Modal container restart.
+
+- A restarted container has an empty prefix cache and cold kernels (first probe about 1,000 ms). If the gateway still treats it as the warm home of its chapters, the first requests for those chapters pay the cold start.
+- **The evict:** when a worker fails its warm probe (all 3 rounds), cannot be read, or restarts (its counters go back), the gateway drops that worker's chapter affinity and its warm flag, once per failure, and counts `gateway_affinity_evict_total`. Place reads the warm flag, so the chapters hop to the other worker. When the worker passes its warm probe again, its chapters come back.
+- **Count:** the unit test with a fake worker (`tests/test_evict.py`, no GPU) counts 3. The live runs count 0: no worker failed all 3 warm rounds or restarted while a gateway ran (`metrics/evict_count.txt`).
+
 **Warm-up.** `cluster/warm.py` sends 5 probes to a worker: chapters 00, 03, 05, 07 and 10, each with the real system prompt and a real chunk set. A "Probe <run id>." line keeps the chunks uncached on each run. Engine TTFT per probe comes from the change in `vllm:time_to_first_token_seconds_sum`.
 
 - **Warm** = the last probe's engine TTFT is within 20 % of the warm-probe reference: 0.176 s × 1.2 = 0.211 s.

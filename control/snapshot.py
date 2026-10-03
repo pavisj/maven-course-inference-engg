@@ -16,6 +16,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from control.scrape import DEFAULT_NAMES, resolve_fields, scrape_once
+from control.evict import Affinity
 
 REFRESH_S = 2.0               # how often the engine part is refreshed
 TENANT_WINDOW_S = 60.0        # sliding window for per-tenant tokens
@@ -106,6 +107,7 @@ class SnapshotSource:
         self.queues = {}                       # worker -> control.queue.WorkerQueue, set by the gateway
         self.warm: dict[str, bool] = {w: False for w in workers}
         self.restarted: set[str] = set()       # workers seen down or restarted since they were warm
+        self.affinity = Affinity()             # chapter affinity; dropped with the warm flag on a failure (evict)
         self._ttft_count: dict[str, float] = {}
         self._completions = {w: deque() for w in workers}
         self._prefix = deque()                 # (ts, prefix_queries, prefix_hits) summed over workers
@@ -124,6 +126,7 @@ class SnapshotSource:
                 all_ok = False
                 if self.warm.get(name):
                     self.restarted.add(name)
+                    self.affinity.evict(name, self.warm, "unreachable")
                 self.warm[name] = False        # a worker we cannot read is not warm
                 old = self.state.get(name)
                 self.state[name] = WorkerState(name, False, *(
@@ -134,6 +137,7 @@ class SnapshotSource:
             if count < self._ttft_count.get(name, 0.0):   # counters went back: the engine restarted
                 self.warm[name] = False
                 self.restarted.add(name)
+                self.affinity.evict(name, self.warm, "restart")
             self._ttft_count[name] = count
             self.state[name] = WorkerState(
                 name, True, row["running"] or 0.0, row["waiting"] or 0.0,
