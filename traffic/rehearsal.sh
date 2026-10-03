@@ -6,7 +6,8 @@
 #
 # 1. Check /health is 200 on every worker in $WORKERS. Stop if not.
 # 2. Start control/scrape.py in the background.
-# 3. Run each mix for $MIX_SECONDS at $CONCURRENCY against WorkerA only.
+# 3. Run each mix for $MIX_SECONDS with $USERS closed-loop users against WorkerA only.
+#    48 users is more than the engine's 32 decode slots, so requests queue.
 # 4. Stop the scrape.
 # 5. Run cluster/warm_probe.py once more (files: warmup_<worker>_rehearsal.json).
 # Everything goes to $OUT.
@@ -18,12 +19,12 @@ PY="${PY:-.venv/bin/python}"
 WORKERS="${WORKERS:-cluster/workers.json}"
 OUT="${OUT:-metrics/rehearsal}"
 MIX_SECONDS="${MIX_SECONDS:-480}"
-CONCURRENCY="${CONCURRENCY:-8}"
+USERS="${USERS:-48}"
 MIXES="${MIXES:-unique shared_chapter mixed}"
 
 mkdir -p "$OUT"
 LOG="$OUT/rehearsal.log"
-echo "rehearsal start $(date -u +%Y-%m-%dT%H:%M:%SZ): workers $WORKERS, $MIX_SECONDS s per mix, concurrency $CONCURRENCY" | tee -a "$LOG"
+echo "rehearsal start $(date -u +%Y-%m-%dT%H:%M:%SZ): workers $WORKERS, $MIX_SECONDS s per mix, $USERS users" | tee -a "$LOG"
 
 # 1. health
 "$PY" - "$WORKERS" <<'EOF' | tee -a "$LOG"
@@ -51,7 +52,7 @@ trap 'kill -TERM "$SCRAPE_PID" 2>/dev/null || true' EXIT
 # 3. mixes, WorkerA only
 for MIX in $MIXES; do
   "$PY" -m traffic.run --mix "$MIX" --target "$TARGET" --duration "$MIX_SECONDS" \
-    --concurrency "$CONCURRENCY" --out-dir "$OUT" 2>&1 | grep -v "PyTorch was not found" | tee -a "$LOG"
+    --users "$USERS" --out-dir "$OUT" 2>&1 | grep -v "PyTorch was not found" | tee -a "$LOG"
 done
 
 # 4. stop the scrape

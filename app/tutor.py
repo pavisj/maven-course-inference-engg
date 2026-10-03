@@ -7,7 +7,8 @@
 Logs one JSON row per call to metrics/app_calls.jsonl: TTFT, prompt tokens, output tokens.
 
 There is no gateway yet: this calls the worker directly.
-The tenant is only a label in the log; it does not change the request.
+The tenant sets the answer budget: 512 tokens for interactive, 256 for batch.
+The engine never sees the tenant itself. Temperature is 0.
 """
 
 import argparse
@@ -25,8 +26,11 @@ ROOT = Path(__file__).resolve().parent.parent
 WORKERS_FILE = ROOT / "cluster" / "workers.json"
 APP_CALLS = ROOT / "metrics" / "app_calls.jsonl"
 SERVED_MODEL_NAME = "tutor"
-MAX_TOKENS = 512
-TENANTS = ("interactive", "batch")
+# Answer budget per tenant. Batch asks for 3 practice questions, so a shorter
+# budget lets admission promise a deadline.
+MAX_TOKENS = {"interactive": 512, "batch": 256}
+TENANTS = tuple(MAX_TOKENS)
+TEMPERATURE = 0  # same question, same answer: repeatable runs and demos
 
 
 def default_base_url() -> str:
@@ -35,25 +39,29 @@ def default_base_url() -> str:
     return json.loads(WORKERS_FILE.read_text())["WorkerA"]
 
 
-def call_tutor(question: str, tenant: str, base_url: str, max_tokens: int = MAX_TOKENS,
+def call_tutor(question: str, tenant: str, base_url: str, max_tokens: int | None = None,
                on_token=None, timeout_s: float = 300, chapter: str | None = None) -> dict:
     """Ask one question. Return a record; never raise on HTTP or network errors.
 
     ttft_s is measured here: request sent -> first content token. It includes the network.
     prompt_tokens and output_tokens come from the engine's usage report.
+    max_tokens: None means the tenant's budget from MAX_TOKENS.
     chapter: if set, retrieval only looks at that chapter's chunks.
     """
+    max_tokens = max_tokens or MAX_TOKENS[tenant]
     chunks = retrieve(question, chapter=chapter)
     payload = {
         "model": SERVED_MODEL_NAME,
         "messages": build_messages(question, chunks),
         "max_tokens": max_tokens,
+        "temperature": TEMPERATURE,
         "stream": True,
         "stream_options": {"include_usage": True},
     }
     record = {
         "ts": time.time(),
         "tenant": tenant,
+        "max_tokens": max_tokens,
         "question": question,
         "chapter_filter": chapter,
         "base_url": base_url,
@@ -107,7 +115,8 @@ def main():
     parser.add_argument("question")
     parser.add_argument("--tenant", choices=TENANTS, default="interactive")
     parser.add_argument("--base-url", default=None, help="worker URL; default: WorkerA in cluster/workers.json")
-    parser.add_argument("--max-tokens", type=int, default=MAX_TOKENS)
+    parser.add_argument("--max-tokens", type=int, default=None,
+                        help="answer budget; default: 512 for interactive, 256 for batch")
     parser.add_argument("--log", type=Path, default=APP_CALLS, help="JSONL file to append the call record to")
     args = parser.parse_args()
 

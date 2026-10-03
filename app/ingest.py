@@ -8,7 +8,8 @@ text page by page with pypdf and cuts each page into chunks of about
 CHUNK_TOKENS Qwen tokens. Writes one JSON object per chunk to app/chunks.jsonl.
 
 Chunks never cross a page boundary and do not overlap. The last chunk of a
-page is whatever is left, so it can be short.
+page is whatever is left, so it can be short. Chunks under MIN_CHUNK_TOKENS
+are dropped: most are table-of-contents dot leaders or page numbers.
 """
 
 import json
@@ -23,6 +24,7 @@ CORPUS = ROOT / "corpus"
 MANIFEST = CORPUS / "manifest.json"
 CHUNKS = ROOT / "app" / "chunks.jsonl"
 CHUNK_TOKENS = 350
+MIN_CHUNK_TOKENS = 50
 
 
 def page_chunks(text: str, tokens_per_chunk: int = CHUNK_TOKENS) -> list[tuple[str, int]]:
@@ -47,6 +49,7 @@ def main():
     manifest = json.loads(MANIFEST.read_text())
 
     rows = []
+    dropped = 0
     for entry in manifest:
         if not entry["text_ok"]:
             print(f"skip {entry['filename']}: text_ok is false")
@@ -56,6 +59,9 @@ def main():
         for page_no, page in enumerate(reader.pages, start=1):
             text = " ".join((page.extract_text() or "").split())  # collapse whitespace
             for i, (chunk, n_tokens) in enumerate(page_chunks(text)):
+                if n_tokens < MIN_CHUNK_TOKENS:
+                    dropped += 1
+                    continue
                 rows.append(
                     {
                         "id": f"{Path(entry['filename']).stem}:p{page_no}:c{i}",
@@ -71,6 +77,7 @@ def main():
 
     CHUNKS.write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in rows))
     total_tokens = sum(r["tokens"] for r in rows)
+    print(f"dropped {dropped} chunks under {MIN_CHUNK_TOKENS} tokens")
     print(f"wrote {len(rows)} chunks, {total_tokens} tokens, to {CHUNKS.relative_to(ROOT)}")
 
 

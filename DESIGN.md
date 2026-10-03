@@ -24,49 +24,54 @@ _Draft. Inputs come from `metrics/gpu_facts.json` unless a line says otherwise. 
 
 ### Free memory for KV
 
-- Activations = 1 GB = 1,000,000,000 bytes (**verify**: a round assumption, not measured)
-- Free for KV = (mem_get_info free − weights − activations) × 0.90 = (23,437,180,928 − 6,171,877,376 − 1,000,000,000) × 0.90 = 16,265,303,552 × 0.90 = 14,638,773,197 bytes = 14.64 GB (13.63 GiB)
-- KV capacity = free for KV / KV bytes per token = 14,638,773,197 / 36,864 = 397,102 tokens
-- Measured: vLLM allocated 13.67 GiB = 398,016 tokens (`metrics/worker_startup_log.txt`). vLLM applies 0.90 to total memory, then subtracts weights and its measured activation peak. This formula applies 0.90 after subtracting. The two land within 0.3 % (**verify** the cause if the gap grows).
+Main line: activations measured on the A10 we ran. Conservative case: the 1 GB assumption, which leaves less memory for KV.
+
+- **Activations, measured: 0.39 GiB** = 418,759,311 bytes. vLLM's budget is 0.90 × 22.06 GiB = 19.85 GiB. It logged 5.79 GiB of weights and 13.67 GiB of KV. 19.85 − 5.79 − 13.67 = 0.39 GiB is left for activations and working memory (`metrics/gpu_facts.json`, `metrics/worker_startup_log.txt`).
+- **Main: free for KV = 0.90 × mem_get_info total − weights − activations** = 0.90 × 23,684,841,472 − 6,171,877,376 − 418,759,311 = 21,316,357,325 − 6,171,877,376 − 418,759,311 = 14,725,720,637 bytes = 14.73 GB (13.71 GiB)
+  - KV capacity = 14,725,720,637 / 36,864 = **399,461 tokens**
+  - Check: vLLM allocated 398,016 tokens. The main line is 1,445 tokens (0.36 %) above it. About 1,170 tokens of that gap are the 0.04 GiB between paper weights (5.75 GiB) and logged weights (5.79 GiB); rounding in the logged GiB values covers the rest.
+  - Why this order: vLLM applies 0.90 to total memory first, then subtracts weights and activations. The Task 1 order, (free − weights − activations) × 0.90, gives 411,293 tokens with 0.39 GiB: 3.3 % above what vLLM allocated.
+- **Conservative case, 1 GB assumed:** free for KV = (mem_get_info free − weights − 1 GB) × 0.90 = (23,437,180,928 − 6,171,877,376 − 1,000,000,000) × 0.90 = 14,638,773,197 bytes = 14.64 GB (13.63 GiB); KV capacity = 14,638,773,197 / 36,864 = 397,102 tokens
 
 ### max_concurrent_seqs
 
-`max_concurrent_seqs ≈ (HBM − weights − activations) / (kv_bytes_per_token × max_len)`
+`max_concurrent_seqs ≈ (HBM − weights − activations) / (kv_bytes_per_token × max_len)` = KV capacity / max_len
 
-- At max_len 8192: 14,638,773,197 / (36,864 × 8192) = 14,638,773,197 / 301,989,888 = 48.47 sequences
-  - KV per sequence = 36,864 × 8192 = 301,989,888 bytes = 288 MiB
-  - Measured: vLLM logged 48.59 sequences at 8,192 tokens.
-- At the app's length, 2,500 tokens (**verify**: assumed until `app/` exists; recomputed below in "Real prompt length"): 14,638,773,197 / (36,864 × 2,500) = 14,638,773,197 / 92,160,000 = 158.84 sequences
-  - KV per sequence = 36,864 × 2,500 = 92,160,000 bytes = 87.9 MiB
-- The engine cap is `--max-num-seqs` = 32 at both lengths. 32 sequences need 9.0 GiB of KV at 8192 tokens and 2.75 GiB at 2,500 tokens. Both fit in 13.63 GiB.
+| max_len | Why this length | Main (399,461 tokens) | Conservative (397,102 tokens) | KV per sequence | KV for 32 sequences |
+|---|---|---|---|---|---|
+| 8,192 tokens | `--max-model-len` | 48.76 | 48.47 | 288.0 MiB | 9.00 GiB |
+| 2,500 tokens | first assumption, before `app/` | 159.78 | 158.84 | 87.9 MiB | 2.75 GiB |
+| 2,660 tokens | interactive median: 2,148 prompt + 512 answer | 150.17 | 149.29 | 93.5 MiB | 2.92 GiB |
+| 2,832 tokens | interactive maximum: 2,320 prompt + 512 answer | 141.05 | 140.22 | 99.6 MiB | 3.11 GiB |
+| 2,272 tokens | batch median: 2,016 prompt + 256 answer | 175.82 | 174.78 | 79.9 MiB | 2.50 GiB |
+| 2,607 tokens | batch maximum: 2,351 prompt + 256 answer | 153.23 | 152.32 | 91.7 MiB | 2.86 GiB |
+
+- Measured: vLLM logged 48.59 sequences at 8,192 tokens.
+- The engine cap is `--max-num-seqs` = 32 at every length. 32 sequences need at most 9.00 GiB of KV, out of 13.71 GiB.
 
 ### Real prompt length
 
-Measured with the Qwen tokenizer on 12 tutor questions (`python -m app.prompt "<question>"`; questions listed below). Tokenizer only, no engine run (**verify** against the engine's `prompt_tokens` on the next deploy).
+Measured with the Qwen tokenizer (`python -m app.prompt "<question>"`). Tokenizer only, no engine run (**verify** against the engine's `prompt_tokens` on the next deploy). Chunks under 50 tokens are dropped at ingest (624 chunks remain).
 
-- System prompt: 431 tokens (the same for every request: the shared prefix)
-- Retrieved chunks, top 5 by BM25: 1,242 to 1,857 tokens
-- Question: 10 to 17 tokens
-- Chat template and separators: 13 to 14 tokens
-- **Total prompt: median 2,094 tokens, minimum 1,698, maximum 2,317** (12 questions)
-- Output budget: `max_tokens` = 512 (`app/tutor.py`; **verify** that 512 suits the app)
-- KV length per sequence = prompt + output budget: median 2,094 + 512 = 2,606 tokens; maximum 2,317 + 512 = 2,829 tokens
-- Prompt share of the sequence: 80 % to 82 %. The workload is mostly prefill, as the brief says for Track A.
+- System prompt: 431 tokens, the same for every request: the shared prefix.
+- **Interactive** (12 questions, listed below; retrieval over the whole corpus):
+  - Retrieved chunks, top 5 by BM25: 1,470 to 1,861 tokens. Question: 10 to 17 tokens. Template: 14 tokens.
+  - **Total prompt: median 2,148 tokens, minimum 1,931, maximum 2,320.** Answer budget: 512 tokens.
+- **Batch** (one "Write 3 practice questions" request per chapter label, 7 labels; retrieval inside the chapter):
+  - Retrieved chunks: 1,131 to 1,864 tokens. Question: 22 to 42 tokens. Template: 13 to 14 tokens.
+  - **Total prompt: median 2,016 tokens, minimum 1,604, maximum 2,351.** Answer budget: 256 tokens.
+- Prompt share of the sequence: 81 % to 82 % interactive, 89 % to 90 % batch. The workload is mostly prefill, as the brief says for Track A.
 
-Recomputed at the real length:
-
-- At 2,606 tokens (median): 14,638,773,197 / (36,864 × 2,606) = 14,638,773,197 / 96,067,584 = 152.38 sequences; KV per sequence = 91.6 MiB
-- At 2,829 tokens (maximum): 14,638,773,197 / (36,864 × 2,829) = 14,638,773,197 / 104,288,256 = 140.37 sequences; KV per sequence = 99.5 MiB
-- 32 sequences at 2,829 tokens need 32 × 99.5 MiB = 3.11 GiB of KV, out of 13.63 GiB.
-
-Questions measured: Little's Law and admission control; why prefix caching saves prefill; how PagedAttention stores KV in blocks; TTFT versus TPOT; when a gateway sheds instead of queueing; continuous versus static batching; chunked prefill and its flag; why decode is memory-bandwidth bound; KV after preemption; routing a shared-prefix request; cold starts and warming; KV bytes per token.
+Interactive questions measured: Little's Law and admission control; why prefix caching saves prefill; how PagedAttention stores KV in blocks; TTFT versus TPOT; when a gateway sheds instead of queueing; continuous versus static batching; chunked prefill and its flag; why decode is memory-bandwidth bound; KV after preemption; routing a shared-prefix request; cold starts and warming; KV bytes per token.
 
 ### Expected first limiter
 
 - At 8192 tokens: prefill compute, because KV holds 48 full-length sequences while the engine runs at most 32, and each 8192-token prompt is a long prefill (**verify** under load).
-- At 2,500 tokens: prefill compute, because KV holds 158 sequences, five times the 32-slot cap, so KV stays far from full while every request brings about 2,000 uncached prompt tokens to prefill (**verify** under load).
-- At the real length, 2,606 to 2,829 tokens: prefill compute, for the same reason: KV holds 140 to 152 sequences against 32 slots, and only the 431-token system prompt is shared, so about 1,270 to 1,890 prompt tokens per request are uncached, median about 1,660 (prompt − 431; **verify** under load, since the prefix cache reuses whole 16-token blocks only).
+- At 2,500 tokens: prefill compute, because KV holds 159 sequences, five times the 32-slot cap, so KV stays far from full while every request brings about 2,000 uncached prompt tokens to prefill (**verify** under load).
+- At the real length, 2,272 to 2,832 tokens: prefill compute, for the same reason: KV holds 141 to 176 sequences against 32 slots, and only the 431-token system prompt is shared across all requests (**verify** under load, since the prefix cache reuses whole 16-token blocks only).
+  - Uncached prompt tokens per request (prompt − 431): interactive 1,500 to 1,889, median 1,717; batch 1,173 to 1,920, median 1,585.
   - Measured hint: a warm cache miss of 495 prompt tokens took 53 to 84 ms of engine TTFT (`metrics/warmup_WorkerA_warm.json`, `metrics/warmup_WorkerB_warm.json`). That is roughly 6,000 to 9,000 prompt tokens per second per worker (**verify**: one request at a time, not under load).
+- At 48 users (the rehearsal load), up to 48 requests are in flight against 32 slots, so about 16 should wait in the engine queue at peak (**verify**: `vllm:num_requests_waiting` in the rehearsal scrape).
 
 ## Part 2. Design the cluster
 

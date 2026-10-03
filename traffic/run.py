@@ -1,13 +1,16 @@
 """Drive one traffic mix against one worker, closed loop.
 
-    python -m traffic.run --mix unique --target <worker url> --duration 480 --concurrency 8
+    python -m traffic.run --mix unique --target <worker url> --duration 480 --users 48
     python -m traffic.run --mix shared_chapter --chapter 07 --target <url> --duration 30
     python -m traffic.run --mix mixed --target <url> --duration 30 --out-dir metrics/rehearsal
 
---concurrency threads each send the next request as soon as their previous
-one finishes. No new request starts after --duration seconds; requests in
-flight then finish. Each request goes through the app path (retrieve ->
-prompt -> /v1/chat/completions); there is no gateway yet.
+Closed loop: each of --users threads sends its next request as soon as its
+previous one finishes. 48 users is the default: more than the engine's 32
+decode slots, so requests queue. No new request starts after --duration
+seconds; requests in flight then finish. Each request goes through the app
+path (retrieve -> prompt -> /v1/chat/completions); there is no gateway yet.
+The answer budget follows the tenant (512 interactive, 256 batch) unless
+--max-tokens is set.
 
 Appends one row per request to <out-dir>/traffic_<mix>.jsonl:
 tenant, mix, prompt tokens, TTFT, output tokens, status, and timings.
@@ -39,9 +42,11 @@ def main():
     parser.add_argument("--mix", choices=sorted(MIXES), required=True)
     parser.add_argument("--target", required=True, help="worker base URL")
     parser.add_argument("--duration", type=float, default=30, help="seconds to keep starting requests")
-    parser.add_argument("--concurrency", type=int, default=8)
+    parser.add_argument("--users", "--concurrency", dest="users", type=int, default=48,
+                        help="closed-loop users (threads); --concurrency is an alias")
     parser.add_argument("--chapter", default="07", help="chapter label for --mix shared_chapter")
-    parser.add_argument("--max-tokens", type=int, default=MAX_TOKENS)
+    parser.add_argument("--max-tokens", type=int, default=None,
+                        help=f"answer budget for every request; default per tenant {MAX_TOKENS}")
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--out-dir", type=Path, default=ROOT / "metrics")
     args = parser.parse_args()
@@ -69,14 +74,14 @@ def main():
                 record = call_tutor(req["question"], req["tenant"], args.target,
                                     max_tokens=args.max_tokens, chapter=req["chapter"])
                 record.update({"mix": req["mix"], "seq": seq, "slot": slot,
-                               "concurrency": args.concurrency, "target": args.target})
+                               "users": args.users, "target": args.target})
                 with lock:
                     f.write(json.dumps(record) + "\n")
                     f.flush()
                     rows.append(record)
 
-    print(f"{args.mix}: {args.concurrency} threads for {args.duration:g} s -> {args.target}")
-    threads = [threading.Thread(target=worker, args=(i,), daemon=True) for i in range(args.concurrency)]
+    print(f"{args.mix}: {args.users} users for {args.duration:g} s -> {args.target}")
+    threads = [threading.Thread(target=worker, args=(i,), daemon=True) for i in range(args.users)]
     for t in threads:
         t.start()
     for t in threads:

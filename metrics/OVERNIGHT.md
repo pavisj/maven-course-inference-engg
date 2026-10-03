@@ -58,12 +58,36 @@ All tooling is built and was tested offline against a local stub engine. The stu
 16. **Gateway queue file name.** Notebook cell 1 looks for `gateway_queue*.jsonl` for your own queue. Rename it when the gateway exists.
 17. **README** does not yet list the `app/`, `traffic/` and `plots/` commands. Add them now, or after the rehearsal?
 
+## Decisions (2026-10-03, 12:07 IST)
+
+| # | Decision | What changed |
+|---|---|---|
+| 1 | Measured 0.39 GiB as the main line, 1 GB as the conservative case | `DESIGN.md` Part 1. The main line applies 0.90 to total memory first, as vLLM does: 399,461 KV tokens, 0.36 % above vLLM's 398,016. The Task 1 order would give 411,293 (3.3 % above). |
+| 2 | Keep Python 3.10 | Nothing. |
+| 3 | Drop chunks under 50 tokens, no overlap | `app/ingest.py`: `MIN_CHUNK_TOKENS = 50`. 37 chunks dropped, 624 remain. |
+| 4 | Keep `app/chunks.jsonl` out of git | Nothing. |
+| 5 | Keep the prompt order | Nothing. |
+| 6 | Interactive 512, batch 256 | `app/tutor.py`: `MAX_TOKENS` per tenant; `traffic/run.py` uses it. Each record logs `max_tokens`. |
+| 7 | Temperature 0 | `app/tutor.py`: every request sends `temperature: 0`. |
+| 8 | Tenant as a label for now | Nothing; Step 4 turns it into a window. |
+| 9 | Templates for traffic; 12 real demo questions later | Nothing yet. |
+| 10 | Keep chapter 07 | Nothing. |
+| 11 | Keep 1:1 | Nothing. |
+| 12 | Titles for 03 and 06 OK | Nothing. |
+| 13 | Closed loop, add `--users`, run 48 | `traffic/run.py`: `--users` (default 48; `--concurrency` still works). `traffic/rehearsal.sh`: `USERS=48`. |
+| 14 | Plot label: flag, no default | Nothing. |
+| 15 | Install Jupyter | `requirements.txt` pins jupyter 1.1.1 and its parts. `jupyter nbconvert --execute` ran all 10 code cells with no errors. |
+| 16 | Gateway log name at Step 4 | Nothing yet. |
+| 17 | README at Step 10 | Nothing yet. |
+
+**New question:** two full-size table-of-contents chunks remain, both on Week 7 page 2 (350 tokens each). The 50-token floor keeps them. BM25 still ranks one of them second for a Little's Law query. Drop Week 7 page 2, or keep it?
+
 ## The three plots to look at first
 
 They exist once the rehearsal has run (`bash traffic/rehearsal.sh`, then `python plots/make_plots.py`):
 
 1. **`plots/prefix_hit_rate_by_mix.png`:** does `shared_chapter` reuse more KV than `unique`? This answers Part 5 question 5, "which one saved memory".
-2. **`plots/queue_depth.png`:** does `waiting` rise above 0 at concurrency 8 on one A10? This shows where requests queue: in the engine, or nowhere yet. Part 5 questions 1 to 3 depend on it.
+2. **`plots/queue_depth.png`:** does `waiting` rise above 0 at 48 users on one A10 (32 decode slots)? This shows where requests queue: in the engine, or nowhere yet. Part 5 questions 1 to 3 depend on it.
 3. **`plots/ttft_by_mix.png`:** TTFT p50 and p95 per mix. It is laptop-measured, so it includes about 0.75 to 0.95 seconds of network round trip. Compare it with the engine-side TTFT before quoting an SLO.
 
 ## To resume
