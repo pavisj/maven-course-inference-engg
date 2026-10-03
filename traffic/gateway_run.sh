@@ -19,7 +19,8 @@ MIXES="${MIXES:-mixed}"
 CHAPTER="${CHAPTER:-07}"                 # for the shared_chapter mix
 DURATION="${DURATION:-240}"              # not SECONDS: bash sets SECONDS itself
 USERS="${USERS:-48}"
-POLICY="${POLICY:-prefix_then_load}"
+POLICY="${PLACE_POLICY:-${POLICY:-prefix_then_load}}"   # PLACE_POLICY=least_loaded|p2c|prefix_then_load
+LOAD_BOUND="${LOAD_BOUND:-22}"                          # prefix_then_load hops at this many in flight
 MAX_IN_FLIGHT="${MAX_IN_FLIGHT:-32}"
 TENANT_SCALE="${TENANT_SCALE:-1}"         # test lever: multiplies both tenant windows (1 = as designed)
 WARM_WAIT="${WARM_WAIT:-600}"
@@ -27,10 +28,10 @@ GATEWAY="http://127.0.0.1:8765"
 
 mkdir -p "$OUT"
 LOG="$OUT/$RUN.log"
-echo "$RUN start $(date -u +%Y-%m-%dT%H:%M:%SZ): $MIXES, $USERS users, $DURATION s each, policy $POLICY, $MAX_IN_FLIGHT seats" | tee -a "$LOG"
+echo "$RUN start $(date -u +%Y-%m-%dT%H:%M:%SZ): $MIXES, $USERS users, $DURATION s each, policy $POLICY, load bound $LOAD_BOUND, $MAX_IN_FLIGHT seats" | tee -a "$LOG"
 
 # 1. gateway
-"$PY" -m control.gateway --workers "$WORKERS" --out-dir "$OUT" --policy "$POLICY" --max-in-flight "$MAX_IN_FLIGHT" \
+"$PY" -m control.gateway --workers "$WORKERS" --out-dir "$OUT" --policy "$POLICY" --load-bound "$LOAD_BOUND" --max-in-flight "$MAX_IN_FLIGHT" \
   --tenant-window-scale "$TENANT_SCALE" >> "$LOG" 2>&1 &
 GATEWAY_PID=$!
 SCRAPE_PID=""

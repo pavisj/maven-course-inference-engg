@@ -19,6 +19,7 @@ import argparse
 import asyncio
 import json
 import math
+import os
 import random
 import time
 from collections import defaultdict
@@ -35,7 +36,7 @@ from control.admit import AdmitRequest, est_ttft, should_shed
 from control.guard import TENANTS, count_prompt_tokens, inspect
 from control.hop import HopLog
 from control.overflow import (STAY_RETRY_S, VIA_HEADER, VIA_NONE, VIA_OVERFLOW, OverflowLimiter, classify)
-from control.place import DEFAULT_POLICY, POLICIES, PlaceRequest, Shed, pick, views_from_snapshot
+from control.place import DEFAULT_POLICY, LOAD_BOUND, POLICIES, PlaceRequest, Shed, pick, views_from_snapshot
 from control.queue import DEFAULT_MAX_IN_FLIGHT, WorkerQueue
 from control.snapshot import SnapshotSource, TenantWindow
 
@@ -59,7 +60,8 @@ def first_content(line: str) -> bool:
 
 
 def create_app(workers: dict[str, str], out_dir: Path, overflow_url: str | None = None,
-               policy: str = DEFAULT_POLICY, max_in_flight: int = DEFAULT_MAX_IN_FLIGHT) -> FastAPI:
+               policy: str = DEFAULT_POLICY, max_in_flight: int = DEFAULT_MAX_IN_FLIGHT,
+               load_bound: int = LOAD_BOUND) -> FastAPI:
     source = SnapshotSource(workers, slots=max_in_flight)
     queues = {w: WorkerQueue(w, max_in_flight) for w in workers}
     source.queues = queues
@@ -189,7 +191,7 @@ def create_app(workers: dict[str, str], out_dir: Path, overflow_url: str | None 
             payload = await request.json()
         except (json.JSONDecodeError, UnicodeDecodeError):
             payload = None
-        row = {"ts": t0, "tenant": tenant, "chapter": chapter}
+        row = {"ts": t0, "tenant": tenant, "chapter": chapter, "policy": policy, "load_bound": load_bound}
 
         # 1. guard
         guard = inspect(payload, tenant)
@@ -205,7 +207,7 @@ def create_app(workers: dict[str, str], out_dir: Path, overflow_url: str | None 
 
         # 2. place (no state changes until admit passes)
         snap = source.current(t0)
-        placement = pick(PlaceRequest(tenant, chapter), views_from_snapshot(snap), policy=policy)
+        placement = pick(PlaceRequest(tenant, chapter), views_from_snapshot(snap), policy=policy, load_bound=load_bound)
         if isinstance(placement, Shed):
             c["requests"][(tenant, "leave")] += 1
             return await leave(payload, {**row, "decision": "leave", "reason": placement.reason, "stage": "place"},
@@ -319,7 +321,7 @@ def create_app(workers: dict[str, str], out_dir: Path, overflow_url: str | None 
 
     @app.get("/health")
     async def health():
-        return {"ok": True, "policy": policy, "warm": dict(source.warm),
+        return {"ok": True, "policy": policy, "load_bound": load_bound, "warm": dict(source.warm),
                 "snapshot_age_s": round(time.time() - source.last_refresh, 2)}
 
     return app
@@ -332,7 +334,10 @@ def main():
     parser.add_argument("--workers", type=Path, default=ROOT / "cluster" / "workers.json", help="JSON {name: url}")
     parser.add_argument("--overflow", type=Path, default=ROOT / "cluster" / "overflow.json", help="JSON {Overflow: url}")
     parser.add_argument("--out-dir", type=Path, default=ROOT / "metrics")
-    parser.add_argument("--policy", choices=POLICIES, default=DEFAULT_POLICY)
+    parser.add_argument("--policy", choices=POLICIES, default=os.environ.get("PLACE_POLICY", DEFAULT_POLICY),
+                        help="placement policy; env PLACE_POLICY")
+    parser.add_argument("--load-bound", type=int, default=int(os.environ.get("LOAD_BOUND", LOAD_BOUND)),
+                        help="prefix_then_load: hop when the home has this many in flight; env LOAD_BOUND")
     parser.add_argument("--max-in-flight", type=int, default=DEFAULT_MAX_IN_FLIGHT, help="seats per worker (the engine's --max-num-seqs)")
     parser.add_argument("--tenant-window-scale", type=float, default=1.0,
                         help="test lever: multiply both tenant windows (run F uses a large value to isolate kv_free)")
@@ -342,7 +347,8 @@ def main():
         admit.TENANT_WINDOW_TOKENS = {t: int(v * args.tenant_window_scale) for t, v in admit.TENANT_WINDOW_TOKENS.items()}
         print(f"tenant windows scaled x{args.tenant_window_scale}: {admit.TENANT_WINDOW_TOKENS}", flush=True)
     overflow = json.loads(args.overflow.read_text()).get("Overflow") if args.overflow.exists() else None
-    app = create_app(json.loads(args.workers.read_text()), args.out_dir, overflow, args.policy, args.max_in_flight)
+    app = create_app(json.loads(args.workers.read_text()), args.out_dir, overflow, args.policy, args.max_in_flight,
+                     args.load_bound)
     uvicorn.run(app, host=args.host, port=args.port, log_level="warning", access_log=False)
 
 
