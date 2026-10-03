@@ -1,21 +1,25 @@
-"""Admission: should this request enter the engine now?
+"""Admission: should this request enter the chosen worker now?
 
-should_shed(req, snap) -> (shed, code, reason, retry_after_seconds)
+should_shed(req, snap, rng) -> (shed, code, reason, retry_after_seconds)
 
 Four tests, in this order; the first match wins:
 1. tenant_tokens  one tenant's tokens in the last 60 s would pass its window
 2. timeout_queue  the estimated TTFT is already past the tenant's deadline
 3. kv_free        the request's KV blocks would push KV usage past 85 %
-4. over_cap       the engine's decode slots are full and the estimated TTFT is above 2 s
+4. over_cap       batch: 8 or more requests already wait for this worker;
+                  interactive: every seat is taken and the estimated TTFT is above 2 s
 
 Every shed is a 429: "try here again later". A 429 never overflows to another API.
-A worker with no scrape yet counts as idle (fail-open).
+Every retry_after gets jitter: x a random factor in [0.7, 1.3], so shed clients do not
+come back together. Placement runs first (control/place.py), so admit checks the
+worker the request would go to.
 """
 
 import math
+import random
 from dataclasses import dataclass
 
-from control.snapshot import Snapshot
+from control.snapshot import COMPLETION_FLOOR, Snapshot
 
 # tenant_tokens
 TENANT_WINDOW_TOKENS = {"interactive": 400_000, "batch": 150_000}
@@ -23,28 +27,30 @@ TENANT_WINDOW_TOKENS = {"interactive": 400_000, "batch": 150_000}
 #   400,000 gives interactive about 19 % headroom; 150,000 holds batch to about half its baseline-B demand.
 TENANT_WINDOW_S = 60.0           # sliding window length (the brief's "tenant window")
 
-# timeout_queue
+# timeout_queue: est_ttft = max(Little's law, prefill backlog)
 DEADLINE_S = {"interactive": 6.0, "batch": 60.0}
 #   interactive: above baseline B's worst laptop-measured TTFT p95 (5,391 ms, unique mix); batch: practice questions can wait a minute.
-STEP_TOKENS = 4096               # --max-num-batched-tokens: prefill tokens per engine step (cluster/modal_vllm.py, Part 1)
-STEP_SECONDS = 0.85              # seconds per full engine step under load (assumed; baseline B implies 1.0 to 2.7 s, see DESIGN Part 3)
-BASE_TTFT_S = 0.4                # TTFT with nothing waiting: baseline A engine TTFT mean 120 to 216 ms, plus margin
+IDLE_TTFT_S = 0.15               # Little's law floor: baseline A engine TTFT mean, 153 ms (Step 5a)
+STEP_TOKENS = 4096               # prefill backlog: --max-num-batched-tokens, prefill tokens per engine step (Part 1)
+STEP_SECONDS = 0.85              # prefill backlog: seconds per full step (Step 4 assumption; now only a lower bound)
+BASE_TTFT_S = 0.4                # prefill backlog: TTFT with nothing waiting (Step 4)
 
 # kv_free
 BLOCK_TOKENS = 16                # vLLM block_size (vllm:cache_config_info)
-TOTAL_BLOCKS = 24_876            # vLLM num_gpu_blocks: 398,016 KV tokens / 16 (Part 1, measured)
+TOTAL_BLOCKS = 24_876            # fallback for vLLM num_gpu_blocks: 398,016 KV tokens / 16 (Part 1); the scrape gives the live value
 KV_SHED_PCT = 85.0               # keep 15 % of KV free for decode growth (baseline B peaked at 14.5 %)
 
 # over_cap
-SLOTS = 32                       # --max-num-seqs (Part 1)
-OVER_CAP_TTFT_S = 2.0            # baseline B mixed: est_ttft passes 2 s at about 13 waiting requests
+BATCH_MAX_WAITING = 8            # batch: shed when vLLM waiting + gateway queue for the worker reaches 8 (Step 5a)
+OVER_CAP_TTFT_S = 2.0            # interactive: shed only when seats are full and est_ttft is above 2 s
 
 # retry_after
 KV_RETRY_S = 5.0                 # kv_free: KV frees as running requests finish
 MAX_RETRY_S = 10.0               # cap for timeout_queue and over_cap
 MIN_RETRY_S = 1.0                # floor: over_cap's formula goes negative when est_ttft is below the deadline
+JITTER = (0.7, 1.3)              # every retry_after x a random factor in this range (Step 5a)
 
-TARGET = "WorkerA"               # Step 4 forwards everything to worker A
+TARGET = "WorkerA"               # default worker when a caller does not name one
 
 
 @dataclass(frozen=True)
@@ -55,15 +61,32 @@ class AdmitRequest:
     worker: str = TARGET
 
 
-def est_ttft(snap: Snapshot, worker: str = TARGET) -> float:
-    """(waiting + queue_depth) x avg uncached prompt tokens / 4096 x 0.85 s + 0.4 s."""
+def little_ttft(snap: Snapshot, worker: str) -> float:
+    """Little's law: requests ahead / completions per second + idle TTFT."""
     w = snap.workers.get(worker)
-    waiting = w.waiting if w else 0.0
-    return (waiting + snap.queue_depth) * snap.avg_uncached_prompt_tokens / STEP_TOKENS * STEP_SECONDS + BASE_TTFT_S
+    ahead = (w.waiting if w else 0.0) + snap.queue_depth.get(worker, 0)
+    rate = max(COMPLETION_FLOOR, snap.completion_rate.get(worker, COMPLETION_FLOOR))
+    return ahead / rate + IDLE_TTFT_S
+
+
+def prefill_backlog(snap: Snapshot, worker: str) -> float:
+    """Step 4 formula: the prefill tokens ahead, at 4,096 tokens per 0.85 s step."""
+    w = snap.workers.get(worker)
+    ahead = (w.waiting if w else 0.0) + snap.queue_depth.get(worker, 0)
+    return ahead * snap.avg_uncached_prompt_tokens / STEP_TOKENS * STEP_SECONDS + BASE_TTFT_S
+
+
+def est_ttft(snap: Snapshot, worker: str = TARGET) -> float:
+    """Little's law, with the prefill backlog as a lower bound."""
+    return max(little_ttft(snap, worker), prefill_backlog(snap, worker))
+
+
+def _jitter(seconds: float, rng) -> float:
+    return round(seconds * rng.uniform(*JITTER), 2)
 
 
 def _clamp_retry(seconds: float) -> float:
-    return round(min(MAX_RETRY_S, max(MIN_RETRY_S, seconds)), 2)
+    return min(MAX_RETRY_S, max(MIN_RETRY_S, seconds))
 
 
 def tenant_retry_after(events, used: int, need: int, window_tokens: int, now: float,
@@ -74,36 +97,41 @@ def tenant_retry_after(events, used: int, need: int, window_tokens: int, now: fl
     for ts, tokens in events:          # oldest first
         freed += tokens
         if freed >= excess:
-            return round(max(0.0, ts + window_s - now), 2)
+            return max(0.0, ts + window_s - now)
     return window_s                    # unknown history, or the request alone is larger than the window
 
 
-def should_shed(req: AdmitRequest, snap: Snapshot) -> tuple[bool, int, str, float]:
+def should_shed(req: AdmitRequest, snap: Snapshot, rng=random) -> tuple[bool, int, str, float]:
     need = req.prompt_tokens + req.max_tokens
+    w = snap.workers.get(req.worker)
 
     # 1. tenant_tokens
     used = snap.tenant_tokens_60s.get(req.tenant, 0)
     window = TENANT_WINDOW_TOKENS[req.tenant]
     if used + need > window:
         events = snap.tenant_events.get(req.tenant, ())
-        return True, 429, "tenant_tokens", tenant_retry_after(events, used, need, window, snap.ts)
+        return True, 429, "tenant_tokens", _jitter(tenant_retry_after(events, used, need, window, snap.ts), rng)
 
     # 2. timeout_queue
     ttft = est_ttft(snap, req.worker)
     deadline = DEADLINE_S[req.tenant]
     if ttft > deadline:
-        return True, 429, "timeout_queue", _clamp_retry(ttft - deadline + 1)
+        return True, 429, "timeout_queue", _jitter(_clamp_retry(ttft - deadline + 1), rng)
 
     # 3. kv_free
-    w = snap.workers.get(req.worker)
     kv_pct = w.kv_usage_pct if w else 0.0
+    total_blocks = (w.num_gpu_blocks if w and w.num_gpu_blocks else None) or TOTAL_BLOCKS
     blocks_needed = math.ceil(need / BLOCK_TOKENS)
-    if kv_pct + blocks_needed / TOTAL_BLOCKS * 100 > KV_SHED_PCT:
-        return True, 429, "kv_free", KV_RETRY_S
+    if kv_pct + blocks_needed / total_blocks * 100 > KV_SHED_PCT:
+        return True, 429, "kv_free", _jitter(KV_RETRY_S, rng)
 
-    # 4. over_cap
-    running = w.running if w else 0.0
-    if running + snap.queue_depth >= SLOTS and ttft > OVER_CAP_TTFT_S:
-        return True, 429, "over_cap", _clamp_retry(ttft - deadline + 1)
+    # 4. over_cap, by tenant
+    waiting = w.waiting if w else 0.0
+    queue_depth = snap.queue_depth.get(req.worker, 0)
+    if req.tenant == "batch" and waiting + queue_depth >= BATCH_MAX_WAITING:
+        return True, 429, "over_cap", _jitter(_clamp_retry(ttft - deadline + 1), rng)
+    seats_full = snap.in_flight.get(req.worker, 0) >= snap.slots
+    if req.tenant == "interactive" and seats_full and ttft > OVER_CAP_TTFT_S:
+        return True, 429, "over_cap", _jitter(_clamp_retry(ttft - deadline + 1), rng)
 
     return False, 200, "ok", 0.0

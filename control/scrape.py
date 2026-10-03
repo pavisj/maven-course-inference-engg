@@ -108,6 +108,8 @@ def scrape_once(worker: str, url: str, fields: dict[str, str | None], run: str) 
             row[f"{field}_by_{label}"] = dict(by_label[name][label]) if name else None
         for field, name in BUCKETS.items():
             row[field] = dict(by_label[name]["le"]) if name in by_label else None
+        blocks = re.search(r'vllm:cache_config_info\{[^}]*num_gpu_blocks="(\d+)"', r.text)
+        row["num_gpu_blocks"] = int(blocks.group(1)) if blocks else None
         gateway = {line.rsplit(" ", 1)[0]: float(line.rsplit(" ", 1)[1])
                    for line in r.text.splitlines() if line.startswith(GATEWAY_PREFIX)}
         if gateway:
