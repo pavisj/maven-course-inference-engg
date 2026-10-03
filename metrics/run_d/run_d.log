@@ -1,0 +1,25 @@
+run_d start 2026-10-03T10:17:35Z: unique shared_chapter mixed, 48 users, 240 s each, policy prefix_then_load, 32 seats
+[transformers] PyTorch was not found. Models won't be available and only tokenizers, configuration and file/data utilities can be used.
+all warm after 14 s: {'WorkerA': True, 'WorkerB': True}
+unique: 48 users for 240 s -> http://127.0.0.1:8765
+2259 requests, 609 ok; by status: {'200': 609, '429 tenant_tokens': 1646, '429 timeout_queue': 4}
+TTFT p50 679 ms, p95 2507 ms (laptop-measured, includes network)
+prompt tokens median 2120, output tokens median 171
+  tenant interactive: 2259 requests
+wrote metrics/run_d/traffic_unique.jsonl
+shared_chapter: 48 users for 240 s -> http://127.0.0.1:8765
+4427 requests, 604 ok; by status: {'200': 604, '429 tenant_tokens': 3823}
+TTFT p50 569 ms, p95 1410 ms (laptop-measured, includes network)
+prompt tokens median 2182, output tokens median 172
+  tenant interactive: 4427 requests
+wrote metrics/run_d/traffic_shared_chapter.jsonl
+mixed: 48 users for 240 s -> http://127.0.0.1:8765
+1341 requests, 792 ok; by status: {'200': 792, '429 tenant_tokens': 549}
+TTFT p50 564 ms, p95 1602 ms (laptop-measured, includes network)
+prompt tokens median 2058, output tokens median 210
+  tenant batch: 670 requests
+  tenant interactive: 671 requests
+wrote metrics/run_d/traffic_mixed.jsonl
+scraping WorkerA, WorkerB, gateway every 5 s -> metrics/run_d/scrape_run_d.jsonl
+stopped after 147 scrapes; wrote metrics/run_d/scrape_run_d.jsonl
+run_d end 2026-10-03T10:30:05Z

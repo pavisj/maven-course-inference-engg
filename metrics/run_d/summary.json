@@ -1,0 +1,132 @@
+{
+  "run": "run_d",
+  "requests_sent": 8027,
+  "decisions": {
+    "ok": 2005,
+    "shed": 6022
+  },
+  "sheds_by_reason_tenant": {
+    "batch/tenant_tokens": 406,
+    "interactive/tenant_tokens": 5612,
+    "interactive/timeout_queue": 4
+  },
+  "sheds_by_stage": {
+    "admit": 6022
+  },
+  "guard_rejects": {},
+  "leave": {},
+  "aborts": {
+    "queued": 0,
+    "in_flight": 0
+  },
+  "admitted_by_tenant": {
+    "interactive": 1741,
+    "batch": 264
+  },
+  "placed_by_worker": {
+    "WorkerA": 946,
+    "WorkerB": 1059
+  },
+  "preferred_by_worker": {
+    "WorkerA": 711,
+    "WorkerB": 1294
+  },
+  "hops": {
+    "total": 561,
+    "by_route": {
+      "WorkerB->WorkerA": 398,
+      "WorkerA->WorkerB": 163
+    },
+    "tokens_recomputed": 1179270,
+    "share_of_admitted": 0.28
+  },
+  "gateway_ttft_ms": {
+    "all": {
+      "p50": 574,
+      "p95": 1640
+    },
+    "interactive": {
+      "p50": 576,
+      "p95": 1500
+    },
+    "batch": {
+      "p50": 548,
+      "p95": 2057
+    }
+  },
+  "est_vs_measured": {
+    "n": 2005,
+    "est_p50_s": 0.4,
+    "measured_p50_s": 0.574,
+    "measured_over_est_p50": 1.43,
+    "within_50pct": 0.677,
+    "queue_wait_p95_s": 0.006
+  },
+  "by_mix": {
+    "mixed": {
+      "sent": 1347,
+      "admitted": 792,
+      "shed": {
+        "tenant_tokens": 555
+      },
+      "hopped": 175,
+      "gateway_ttft_p50_ms": 555,
+      "gateway_ttft_p95_ms": 1579,
+      "laptop_ttft_p50_ms": 564,
+      "laptop_ttft_p95_ms": 1602
+    },
+    "shared_chapter": {
+      "sent": 4434,
+      "admitted": 604,
+      "shed": {
+        "tenant_tokens": 3830
+      },
+      "hopped": 259,
+      "gateway_ttft_p50_ms": 562,
+      "gateway_ttft_p95_ms": 1369,
+      "laptop_ttft_p50_ms": 569,
+      "laptop_ttft_p95_ms": 1410
+    },
+    "unique": {
+      "sent": 2259,
+      "admitted": 609,
+      "shed": {
+        "timeout_queue": 4,
+        "tenant_tokens": 1646
+      },
+      "hopped": 127,
+      "gateway_ttft_p50_ms": 672,
+      "gateway_ttft_p95_ms": 2270,
+      "laptop_ttft_p50_ms": 679,
+      "laptop_ttft_p95_ms": 2507
+    }
+  },
+  "workers": {
+    "WorkerA": {
+      "max_running": 24.0,
+      "max_waiting": 0.0,
+      "max_kv_pct": 9.7,
+      "preemptions": 0,
+      "prefix_hit_pct": 56.1,
+      "engine_ttft_mean_ms": 276,
+      "requests_seen": 946,
+      "gateway_queue_max": 0.0,
+      "gateway_queue_mean": 0.0,
+      "gateway_in_flight_max": 24.0,
+      "gateway_in_flight_mean": 8.0
+    },
+    "WorkerB": {
+      "max_running": 24.0,
+      "max_waiting": 2.0,
+      "max_kv_pct": 10.5,
+      "preemptions": 0,
+      "prefix_hit_pct": 59.2,
+      "engine_ttft_mean_ms": 285,
+      "requests_seen": 1056,
+      "gateway_queue_max": 0.0,
+      "gateway_queue_mean": 0.0,
+      "gateway_in_flight_max": 24.0,
+      "gateway_in_flight_mean": 8.9
+    }
+  }
+}

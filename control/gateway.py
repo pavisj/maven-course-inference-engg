@@ -324,7 +324,13 @@ def main():
     parser.add_argument("--out-dir", type=Path, default=ROOT / "metrics")
     parser.add_argument("--policy", choices=POLICIES, default=DEFAULT_POLICY)
     parser.add_argument("--max-in-flight", type=int, default=DEFAULT_MAX_IN_FLIGHT, help="seats per worker (the engine's --max-num-seqs)")
+    parser.add_argument("--tenant-window-scale", type=float, default=1.0,
+                        help="test lever: multiply both tenant windows (run F uses a large value to isolate kv_free)")
     args = parser.parse_args()
+    if args.tenant_window_scale != 1.0:
+        import control.admit as admit
+        admit.TENANT_WINDOW_TOKENS = {t: int(v * args.tenant_window_scale) for t, v in admit.TENANT_WINDOW_TOKENS.items()}
+        print(f"tenant windows scaled x{args.tenant_window_scale}: {admit.TENANT_WINDOW_TOKENS}", flush=True)
     overflow = json.loads(args.overflow.read_text()).get("Overflow") if args.overflow.exists() else None
     app = create_app(json.loads(args.workers.read_text()), args.out_dir, overflow, args.policy, args.max_in_flight)
     uvicorn.run(app, host=args.host, port=args.port, log_level="warning", access_log=False)

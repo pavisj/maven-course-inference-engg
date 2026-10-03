@@ -36,7 +36,7 @@ def main():
     t0 = time.time()
     for cid in ids:
         print(f"stopping {args.worker} container {cid}")
-        subprocess.run([sys.executable, "-m", "modal", "container", "stop", cid], check=True)
+        subprocess.run([sys.executable, "-m", "modal", "container", "stop", "--yes", cid], check=True)
     seen_down = False
     while time.time() - t0 < args.timeout:
         try:

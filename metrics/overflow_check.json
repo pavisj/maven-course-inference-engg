@@ -1,0 +1,18 @@
+{
+  "url": "https://pavithra-sj--tutor-cluster-overflow.us-east.modal.direct",
+  "model": "Qwen/Qwen2.5-1.5B-Instruct",
+  "cold_start_s": 137.7,
+  "health_codes_seen": [
+    "200",
+    "503"
+  ],
+  "polls": 37,
+  "status": 200,
+  "laptop_ttft_s": 1.835,
+  "usage": {
+    "prompt_tokens": 1946,
+    "total_tokens": 2010,
+    "completion_tokens": 64
+  },
+  "answer_start": "Prefix caching saves prefill time because it reduces redundancy in computing the KV cache for repeated prompt prefixes. By storing the KV cache for commonly use"
+}
