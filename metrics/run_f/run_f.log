@@ -1,0 +1,14 @@
+run_f start 2026-10-03T10:36:55Z: mixed, 64 users, 180 s each, policy prefix_then_load, 64 seats
+tenant windows scaled x10.0: {'interactive': 4000000, 'batch': 1500000}
+[transformers] PyTorch was not found. Models won't be available and only tokenizers, configuration and file/data utilities can be used.
+all warm after 143 s: {'WorkerA': True, 'WorkerB': True}
+mixed: 64 users for 180 s -> http://127.0.0.1:8765
+1528 requests, 1528 ok; by status: {'200': 1528}
+TTFT p50 510 ms, p95 963 ms (laptop-measured, includes network)
+prompt tokens median 2042, output tokens median 229
+  tenant batch: 764 requests
+  tenant interactive: 764 requests
+wrote metrics/run_f/traffic_mixed.jsonl
+scraping WorkerA, WorkerB, gateway every 5 s -> metrics/run_f/scrape_run_f.jsonl
+stopped after 39 scrapes; wrote metrics/run_f/scrape_run_f.jsonl
+run_f end 2026-10-03T10:42:33Z

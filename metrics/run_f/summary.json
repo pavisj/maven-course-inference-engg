@@ -1,0 +1,98 @@
+{
+  "run": "run_f",
+  "requests_sent": 1528,
+  "decisions": {
+    "ok": 1528
+  },
+  "sheds_by_reason_tenant": {},
+  "sheds_by_stage": {},
+  "guard_rejects": {},
+  "leave": {},
+  "aborts": {
+    "queued": 0,
+    "in_flight": 0
+  },
+  "admitted_by_tenant": {
+    "interactive": 764,
+    "batch": 764
+  },
+  "placed_by_worker": {
+    "WorkerB": 772,
+    "WorkerA": 756
+  },
+  "preferred_by_worker": {
+    "WorkerB": 793,
+    "WorkerA": 735
+  },
+  "hops": {
+    "total": 735,
+    "by_route": {
+      "WorkerB->WorkerA": 378,
+      "WorkerA->WorkerB": 357
+    },
+    "tokens_recomputed": 1510950,
+    "share_of_admitted": 0.481
+  },
+  "gateway_ttft_ms": {
+    "all": {
+      "p50": 501,
+      "p95": 957
+    },
+    "interactive": {
+      "p50": 516,
+      "p95": 957
+    },
+    "batch": {
+      "p50": 463,
+      "p95": 949
+    }
+  },
+  "est_vs_measured": {
+    "n": 1528,
+    "est_p50_s": 0.4,
+    "measured_p50_s": 0.501,
+    "measured_over_est_p50": 1.25,
+    "within_50pct": 0.936,
+    "queue_wait_p95_s": 0.006
+  },
+  "by_mix": {
+    "mixed": {
+      "sent": 1528,
+      "admitted": 1528,
+      "shed": {},
+      "hopped": 735,
+      "gateway_ttft_p50_ms": 501,
+      "gateway_ttft_p95_ms": 957,
+      "laptop_ttft_p50_ms": 510,
+      "laptop_ttft_p95_ms": 963
+    }
+  },
+  "workers": {
+    "WorkerA": {
+      "max_running": 32.0,
+      "max_waiting": 0.0,
+      "max_kv_pct": 36.1,
+      "preemptions": 0,
+      "prefix_hit_pct": 64.9,
+      "engine_ttft_mean_ms": 321,
+      "requests_seen": 756,
+      "gateway_queue_max": 0.0,
+      "gateway_queue_mean": 0.0,
+      "gateway_in_flight_max": 33.0,
+      "gateway_in_flight_mean": 30.2
+    },
+    "WorkerB": {
+      "max_running": 32.0,
+      "max_waiting": 0.0,
+      "max_kv_pct": 31.7,
+      "preemptions": 0,
+      "prefix_hit_pct": 65.8,
+      "engine_ttft_mean_ms": 311,
+      "requests_seen": 771,
+      "gateway_queue_max": 0.0,
+      "gateway_queue_mean": 0.0,
+      "gateway_in_flight_max": 32.0,
+      "gateway_in_flight_mean": 30.0
+    }
+  }
+}

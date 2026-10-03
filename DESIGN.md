@@ -116,11 +116,26 @@ Interactive questions measured: Little's Law and admission control; why prefix c
 
 ### 3. Topology
 
+- **Two colocated replicas, not a prefill/decode split.** WorkerA and WorkerB each run the whole model (prefill and decode) on one A10. Part 1 shows the first limit is prefill compute and decode slots, not KV memory, so both phases fit on one GPU. A split would add a KV transfer on every request for no memory gain.
+- **No slicing.** One worker = one Modal container = one GPU = one KV cache (`min_containers=1`, `max_containers=1`). HAMi-style GPU slicing does not exist on Modal.
+- **Affinity by chapter.** The gateway sends each chapter to a home worker (Part 4), so each worker's prefix cache holds half the corpus.
+- **If we scale,** add decode slots, not replicas of the same size: baseline B ran 32 sequences with KV at 14.5 %. Run F tested a bigger `--max-num-seqs` with less memory (Part 5).
+
 ### 4. Concurrency and max length
+
+- `--max-num-seqs 32` decode slots and `--max-model-len 8192` per worker (Part 1). The gateway holds request 33 in its own queue (Part 5), so vLLM's waiting queue stays near 0.
 
 ### 5. Hop backend
 
+- **Backend: `recompute`.** Modal containers do not share memory or a network fabric for KV, so there is no Mooncake or NIXL here. A hop moves the request, not its KV: the destination prefills the prompt again. `control/hop.py` records every hop (Part 6).
+
 ### 6. Overflow
+
+- **Who receives a 503 or 529:** first the other worker, once (still inside the cluster). Then the `Overflow` server: `Qwen/Qwen2.5-1.5B-Instruct` (revision `989aa79`) on its own A10, served as `tutor`, 0 to 1 containers, gone 5 minutes after its last request (`cluster/modal_vllm.py`).
+- **Why that model:** the same family and tokenizer as the 3B, so the same prompt works unchanged. It needs 28 KiB of KV per token (28 layers × 2 KV heads × 128 × 2 × 2 bytes) against 36 KiB for the 3B, and about 3.1 GB of weights. It answers worse, but it answers.
+- **Limiter:** at most 10 overflow requests per minute (`control/overflow.py`). Above that the client gets the 503. Every overflow answer carries `X-Via: overflow:qwen2.5-1.5b`.
+- **Measured:** from zero, Overflow returned 503 for 137.7 s, then answered (`metrics/overflow_check.json`: 1,946 prompt tokens, 1.8 s laptop TTFT). So a cold Overflow cannot catch a sudden 503 burst; the gateway passes that 503 on with `X-Via` and counts `overflow_unavailable`.
+- **What stays:** 429, 500 and out-of-memory errors never leave. They are our own decisions or our own faults.
 
 ### Gateway and engine
 
@@ -220,13 +235,103 @@ Every shed in Step 4 is a 429: the request stays and may try here again after `r
 3. **p95 got worse while p50 got better.** Laptop p50 fell from 3,787 to 2,394 ms, but p95 rose from 4,629 to 5,820 ms. One possible cause: users shed by `over_cap` all wait the 1 s floor and come back together.
 4. **The engine view is up to 2 s old,** and `queue_depth` is 0 until Step 5 adds a queue.
 
+### Step 5 changes to admit (`control/admit.py`)
+
+- **est_ttft = max(Little's law, prefill backlog).** Little's law: (vLLM waiting + gateway queue depth) / completion rate + 0.15 s. The completion rate counts the gateway's completions per worker over the last 30 s, floor 0.5/s. 0.15 s is baseline A's engine TTFT mean. The Step 4 formula is now only a lower bound.
+- **Jitter:** every retry_after is multiplied by a random factor in [0.7, 1.3].
+- **over_cap by tenant:** batch is shed when vLLM waiting + gateway queue for its worker reaches 8. Interactive is shed only when all seats are taken (gateway in-flight = 32) and est_ttft > 2.0 s.
+- **Admit runs after place,** on the chosen worker, because its queue, KV and waiting count are what matter. Place changes no state until admit passes.
+- **Every request logs est_ttft and the measured TTFT** (from arrival, so it includes the queue wait): `gateway_requests.jsonl`, plotted as `est_vs_measured_ttft.png`.
+
 ## Part 4. Place
+
+`control/place.py`: `pick(req, workers, *, policy) -> Placement | Shed`. Default policy `prefix_then_load`; also `least_loaded` and `p2c`.
+
+| Prefix key (file prefix of the top-ranked chunk) | Home worker |
+|---|---|
+| 00, 03a, 03b, 05 | WorkerA |
+| 06, 06b, 07, 09, 10 | WorkerB |
+
+- **Prefix key:** the app sends `X-Chapter` = the file prefix of its top-ranked chunk (`app/tutor.py`). The manifest's chapter labels are digits only, so the file prefix is what tells 03a from 03b and 06 from 06b.
+- **Load bound:** if the home worker has 22 or more requests in flight (70 % of 32 seats), the request goes to the usable worker with the lowest score. If the other worker is busier, it stays home.
+- **Change to the spec:** the bound uses the gateway's in-flight count only. The spec said running + in-flight, but vLLM's running requests are a subset of the gateway's in-flight requests, so the sum counts each request about twice. It would hop at about 11 real requests instead of 22.
+- **Score** = gateway in-flight + gateway queue depth + vLLM waiting. Queue depth is a scorer, not only an admit input.
+- **Usable** = reachable and warm (Part 6). No usable worker → `Shed(503, "no_warm_worker")`, which goes through the overflow gate.
+- **No bounce:** a request is placed once. The one exception is a 503 or 529 from the chosen worker: the overflow gate tries the other worker once (Part 2, item 6).
+- **Every admitted request logs** `preferred`, `worker` (chosen) and `hopped`.
+
+Measured (`metrics/run_d/summary.json`, `metrics/run_e/summary.json`):
+
+| Run | Admitted | Preferred A / B | Placed A / B | Hops |
+|---|---|---|---|---|
+| D: 3 mixes, 48 users | 2,005 | 711 / 1,294 | 946 / 1,059 | 561 (28 %): B→A 398, A→B 163 |
+| E: chapter 07 only, 48 users | 305 | 0 / 305 | 147 / 158 | 147 (48 %): all B→A |
 
 ## Part 5. Queue
 
+`control/queue.py`: one queue per worker, in the gateway.
+
+- **Seats:** at most 32 requests in flight per worker (`--max-in-flight`, the engine's `--max-num-seqs`). Request 33 waits in the gateway, not in vLLM's waiting queue.
+- **Order:** interactive before batch, then arrival time.
+- **Deadline in queue,** from arrival: interactive 6 s, batch 60 s. Past it, the request leaves the queue with 429 `timeout_queue`.
+- **Client gone while queued:** dropped, `gateway_aborts_total{stage="queued"}`. **Client gone while in flight:** the gateway closes the upstream stream, so vLLM aborts the request and frees its KV blocks; `gateway_aborts_total{stage="in_flight"}`.
+- **Who sits where:** your queue = the gateway queue (`gateway_queue_depth{worker}`). The engine's waiting queue = `vllm:num_requests_waiting`. With the 32-seat cap, vLLM waiting stayed at 0 to 2 in runs D and E.
+- **Who goes first:** the gateway decides the order between tenants. Inside the engine, vLLM's scheduler decides prefill chunks and decode steps; we do not change it.
+
+Measured: in runs D, E and F, the gateway queue never held a request (max depth 0).
+
+- Runs D and E: the tenant windows held the load below 26 in flight per worker (Part 3), so there was nothing to queue.
+- **Run F** (pressure engine: `--gpu-memory-utilization 0.5`, `--max-num-seqs 64`; gateway 64 seats per worker; tenant windows ×10 so `tenant_tokens` cannot hide `kv_free`; 64 users, `mixed`, 3 min): 1,528 requests, all admitted, 0 sheds, 0 preemptions.
+  - vLLM's KV shrank to 7,906 blocks = 126,496 tokens per worker (normal engine: 398,016).
+  - KV usage peaked at 36.1 % (WorkerA) and 31.7 % (WorkerB); in flight averaged 30 per worker.
+  - **The expected `kv_free` sheds did not happen.** 64 users split over two workers is about 32 per worker. `kv_free` fires at 85 % = about 107,500 tokens, about 44 sequences of 2,400 tokens on one worker, so about 90 users. The run proved the gateway admits a 64-seat engine without false sheds; it did not prove `kv_free`. A follow-up needs about 96 users (or one worker), and a second pressure deploy.
+- **Which saved memory on the shared-prefix mix?** PagedAttention packs every sequence into 16-token blocks, so KV grows with real length, not with `--max-model-len`. The prefix cache reuses blocks: 56 % to 66 % of prompt tokens were cache hits per worker in runs D to F, so those tokens took no new blocks. On this workload the prefix cache saved more: at 30 sequences, KV stayed at 31 % to 36 % of a halved cache.
+
 ## Part 6. Hop and warm-up
 
+**Hop.** On Modal, containers do not share KV memory. A hop means the destination recomputes the prefix. Nothing is copied. The record proves where the recompute happened: `{ts, src: preferred, dst: chosen, tokens: prompt_tokens, prefix: chapter, backend: "recompute"}`, appended to `hops.jsonl` and counted in `gateway_hops_total{src,dst}`.
+
+- Run D: 561 hops, 1,179,270 prompt tokens recomputed away from their home worker.
+- Run E (all traffic on chapter 07, home WorkerB): 147 of 305 requests hopped to WorkerA; 310,030 tokens recomputed. WorkerB's prefix hit rate was 59.3 %, WorkerA's 61.2 %.
+
+**Warm-up.** `cluster/warm.py` sends 5 probes to a worker: chapters 00, 03, 05, 07 and 10, each with the real system prompt and a real chunk set. A "Probe <run id>." line keeps the chunks uncached on each run. Engine TTFT per probe comes from the change in `vllm:time_to_first_token_seconds_sum`.
+
+- **Warm** = the last probe's engine TTFT is within 20 % of the warm-probe reference: 0.176 s × 1.2 = 0.211 s.
+  - The first line was 20 % of baseline A's engine mean, 0.15 s × 1.2 = 0.18 s. It was too tight: baseline A's mean includes prefix-cache hits, but each probe prefills about 1,600 uncached tokens. Warm workers measured 175 to 193 ms, so a warm worker could fail. The reference is now the same probes on warm workers (run E, last probe: 175 and 176 ms). Cold first probes (1,007 and 1,026 ms) still fail by far. Changed on 2026-10-03 at Pavithra's request.
+  - Runs D and E used the 0.18 s line; both workers still passed it on the first round.
+- The gateway runs the probes when it starts and whenever a worker comes back from being unreachable or restarted. It tries up to 3 rounds, then again every 30 s. `gateway_worker_warm{worker}` is 0 or 1, and place never uses a worker that is not warm.
+
+**Proof** (`metrics/warm_proof.json`): WorkerB only was cold-started (its container stopped; Modal started a fresh one, healthy after 133.7 s), then probed at once.
+
+| Worker | Probe 1 | Probe 2 | Probe 3 | Probe 4 | Probe 5 | Warm |
+|---|---|---|---|---|---|---|
+| WorkerA (warm, untouched) | 365 ms | 184 ms | 185 ms | 176 ms | 176 ms | yes |
+| WorkerB (fresh container) | 1,007 ms | 187 ms | 187 ms | 176 ms | 175 ms | yes |
+
+- A healthy replica is not a warm one: WorkerB answered `/health` with 200, and its first request still took 1,007 ms in the engine, 5.7 times its warm value.
+- The same pattern showed after the Step 8 deploy restarted both workers: first probes 1,014 and 1,026 ms, then 174 to 186 ms.
+- **Change to the spec:** "a fresh deploy of WorkerB only" is not possible with `modal deploy`, which restarts every server in the app. `cluster/cold_start.py` stops WorkerB's container instead, which restarts WorkerB only.
+
 ## Part 7. Wire the app to the cluster
+
+```
+app turn: python -m app.tutor "question" --base-url http://127.0.0.1:8765
+  retrieve (BM25 top 5)  -> prompt (system + sorted chunks + question)
+  headers: X-Tenant, X-Chapter (file prefix of the top chunk)
+        ↓
+control/gateway.py  127.0.0.1:8765
+  guard.inspect       400 bad_body | unknown_tenant | prompt_too_long | max_tokens_too_large
+  place.pick          preferred = chapter home; hop if home ≥ 22 in flight or not warm; 503 if no warm worker
+  admit.should_shed   429 tenant_tokens | timeout_queue | kv_free | over_cap (+ jittered Retry-After)
+  queue.wait          32 seats per worker; 429 timeout_queue past the deadline; drop if the client is gone
+  forward             stream from WorkerA or WorkerB
+  overflow gate       429/500/OOM stay · 503/529: other worker once, then Overflow (10 per minute, X-Via)
+        ↓
+vLLM on Modal (WorkerA, WorkerB): waiting / running / preempt, prefix cache, chunked prefill
+```
+
+- Traffic runs through the same path: `traffic/gateway_run.sh` (runs C to F) or `python -m traffic.run --base-url http://127.0.0.1:8765`.
+- The baselines (A, B) skip the gateway on purpose: `--base-url` defaults to WorkerA.
 
 ## Part 8. Proof
 
