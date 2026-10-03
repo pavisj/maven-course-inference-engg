@@ -234,7 +234,8 @@ def main():
     gateway_rows = load_jsonl(sorted(args.run_dir.glob("gateway_requests.jsonl")))
     if gateway_rows:
         est_vs_measured(gateway_rows, args.label, args.out_dir)
-        offset_file = ROOT / "metrics" / "network_offset.json"
+        offset_file = args.run_dir / "network_offset.json"     # the run's own trip (run J), else the shared one
+        offset_file = offset_file if offset_file.exists() else ROOT / "metrics" / "network_offset.json"
         if offset_file.exists():
             offset = json.loads(offset_file.read_text())["offset_s"]
             est_vs_measured(gateway_rows, args.label, args.out_dir, offset=offset, name="est_vs_measured_ttft_minus_trip")

@@ -59,7 +59,8 @@ def main(folder: Path) -> dict:
         if v:
             out["gateway_ttft_ms"][t] = {"p50": ms(pct(v, 50)), "p95": ms(pct(v, 95))}
     pairs = [(r["est_ttft"], r["ttft_measured"]) for r in m if r.get("est_ttft") is not None]
-    offset_file = folder.parent / "network_offset.json"
+    offset_file = folder / "network_offset.json"           # the run's own trip (run J), else the shared one
+    offset_file = offset_file if offset_file.exists() else folder.parent / "network_offset.json"
     offset = json.loads(offset_file.read_text())["offset_s"] if offset_file.exists() else None
     if pairs:
         ratio = [mt / es for es, mt in pairs if es > 0]
