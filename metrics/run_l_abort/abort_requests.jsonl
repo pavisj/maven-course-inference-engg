@@ -1,0 +1,20 @@
+{"i": 0, "closed_by_client": true, "chapter": "05", "ttft_s": null, "chunks": 0, "status": null, "closed_at_s": 1.003, "end_s": 1.004}
+{"i": 1, "closed_by_client": false, "chapter": "06b", "ttft_s": 1.322, "chunks": 272, "status": 200, "end_s": 6.256}
+{"i": 2, "closed_by_client": true, "chapter": "09", "ttft_s": null, "chunks": 0, "status": null, "closed_at_s": 1.003, "end_s": 1.005}
+{"i": 3, "closed_by_client": false, "chapter": "10", "ttft_s": 1.717, "chunks": 514, "status": 200, "end_s": 10.821}
+{"i": 4, "closed_by_client": true, "chapter": "09", "ttft_s": null, "chunks": 0, "status": null, "closed_at_s": 1.003, "end_s": 1.007}
+{"i": 5, "closed_by_client": false, "chapter": "10", "ttft_s": 1.383, "chunks": 235, "status": 200, "end_s": 5.646}
+{"i": 6, "closed_by_client": true, "chapter": "10", "ttft_s": null, "chunks": 0, "status": null, "closed_at_s": 1.005, "end_s": 1.011}
+{"i": 7, "closed_by_client": false, "chapter": "09", "ttft_s": 1.374, "chunks": 514, "status": 200, "end_s": 10.549}
+{"i": 8, "closed_by_client": true, "chapter": "05", "ttft_s": null, "chunks": 0, "status": null, "closed_at_s": 1.006, "end_s": 1.013}
+{"i": 9, "closed_by_client": false, "chapter": "09", "ttft_s": 1.394, "chunks": 220, "status": 200, "end_s": 5.387}
+{"i": 10, "closed_by_client": true, "chapter": "00", "ttft_s": null, "chunks": 0, "status": 200, "closed_at_s": 1.003, "end_s": 1.013}
+{"i": 11, "closed_by_client": false, "chapter": "09", "ttft_s": 1.343, "chunks": 514, "status": 200, "end_s": 10.527}
+{"i": 12, "closed_by_client": true, "chapter": "09", "ttft_s": null, "chunks": 0, "status": null, "closed_at_s": 1.004, "end_s": 1.015}
+{"i": 13, "closed_by_client": false, "chapter": "09", "ttft_s": 1.377, "chunks": 510, "status": 200, "end_s": 10.487}
+{"i": 14, "closed_by_client": true, "chapter": "06", "ttft_s": null, "chunks": 0, "status": null, "closed_at_s": 1.004, "end_s": 1.016}
+{"i": 15, "closed_by_client": false, "chapter": "09", "ttft_s": 1.329, "chunks": 426, "status": 200, "end_s": 8.999}
+{"i": 16, "closed_by_client": true, "chapter": "03a", "ttft_s": null, "chunks": 0, "status": null, "closed_at_s": 1.003, "end_s": 1.016}
+{"i": 17, "closed_by_client": false, "chapter": "10", "ttft_s": 1.325, "chunks": 415, "status": 200, "end_s": 8.799}
+{"i": 18, "closed_by_client": true, "chapter": "00", "ttft_s": null, "chunks": 0, "status": null, "closed_at_s": 1.003, "end_s": 1.017}
+{"i": 19, "closed_by_client": false, "chapter": "06", "ttft_s": 1.325, "chunks": 365, "status": 200, "end_s": 7.919}

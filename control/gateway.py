@@ -26,6 +26,7 @@ from collections import defaultdict
 from contextlib import asynccontextmanager
 from pathlib import Path
 
+import anyio
 import httpx
 import uvicorn
 from fastapi import FastAPI, Request
@@ -46,7 +47,7 @@ from control.snapshot import SnapshotSource, TenantWindow
 ROOT = Path(__file__).resolve().parent.parent
 HOST, PORT = "127.0.0.1", 8765
 SHED_REASONS = ("tenant_tokens", "timeout_queue", "kv_free", "over_cap")
-GUARD_REASONS = ("bad_body", "unknown_tenant", "prompt_too_long", "max_tokens_too_large")
+GUARD_REASONS = ("bad_body", "unknown_model", "unknown_tenant", "prompt_too_long", "max_tokens_too_large")
 WARM_ROUNDS = 3              # probe rounds before a worker counts as "not warm yet"
 WARM_RETRY_S = 30.0          # wait before the next warm attempt after WARM_ROUNDS fail
 
@@ -159,9 +160,11 @@ def create_app(workers: dict[str, str], out_dir: Path, overflow_url: str | None 
             except httpx.HTTPError as e:
                 outcome = f"upstream_error: {type(e).__name__}"
             finally:
-                await up.aclose()
+                with anyio.CancelScope(shield=True):  # a cancelled relay must still close the upstream (run L)
+                    await up.aclose()
                 on_done(outcome, out_tokens)
-                record(**row, ttft_measured=ttft, status=200, outcome=outcome, via=via, output_tokens=out_tokens,
+                final = {**row, "decision": "aborted", "reason": "client_gone"} if outcome == "client_gone" else row
+                record(**final, ttft_measured=ttft, status=200, outcome=outcome, via=via, output_tokens=out_tokens,
                        total_s=round(time.perf_counter() - start, 4))
         headers = {VIA_HEADER: via} if via else {}
         headers.update(extra_headers or {})
@@ -220,7 +223,10 @@ def create_app(workers: dict[str, str], out_dir: Path, overflow_url: str | None 
                                start, placement.code, placement.reason.encode())
         worker = placement.chosen
         est = round(est_ttft(snap, worker), 3)
-        row.update(preferred=placement.preferred, worker=worker, hopped=placement.hopped, est_ttft=est)
+        wstate = snap.workers.get(worker)
+        row.update(preferred=placement.preferred, worker=worker, hopped=placement.hopped, est_ttft=est,
+                   queue_depth=snap.queue_depth.get(worker, 0), in_flight=snap.in_flight.get(worker, 0),
+                   vllm_waiting=wstate.waiting if wstate else None)
 
         # 3. admit, on the chosen worker
         shed, code, reason, retry = should_shed(AdmitRequest(tenant, guard.prompt_tokens, guard.max_tokens, worker), snap)
@@ -275,7 +281,7 @@ def create_app(workers: dict[str, str], out_dir: Path, overflow_url: str | None 
                                 headers={"Retry-After": str(max(1, math.ceil(retry)))})
         if waited == "gone":
             c["aborts"]["queued"] += 1
-            record(**row, decision="abort", reason="client_gone", stage="queue", status=499)
+            record(**row, decision="aborted", reason="client_gone", stage="queue", status=499)
             return Response(status_code=499)
         c["requests"][(tenant, "ok")] += 1
         row.update(decision="ok", reason="ok", stage="engine")
@@ -376,11 +382,14 @@ def main():
                         help="interactive over_cap trigger in seconds (run I: 2; run J: 4)")
     parser.add_argument("--base-ttft", type=float, default=admit.BASE_TTFT_S,
                         help="prefill-backlog floor in the estimate, seconds (run I: 0.4; run J: 0 = removed)")
+    parser.add_argument("--interactive-deadline", type=float, default=admit.DEADLINE_S["interactive"],
+                        help="interactive deadline, seconds, for admit and the queue (default 6; run M: 3)")
     parser.add_argument("--warm-ttft", type=float, default=warm.WARM_TTFT_S,
                         help="warm line: last probe engine TTFT at most this, seconds (default 0.211; run J: 0.28)")
     args = parser.parse_args()
     warm.WARM_TTFT_S = args.warm_ttft
-    settings = {**admit.apply_settings(args.over_cap_ttft, args.tenant_window_scale, args.base_ttft),
+    settings = {**admit.apply_settings(args.over_cap_ttft, args.tenant_window_scale, args.base_ttft,
+                                       args.interactive_deadline),
                 "warm_ttft_s": warm.WARM_TTFT_S}
     print(f"admit settings: {settings}", flush=True)
     args.out_dir.mkdir(parents=True, exist_ok=True)

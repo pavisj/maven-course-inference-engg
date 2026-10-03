@@ -1,0 +1,14 @@
+run_m2 start 2026-10-03T13:06:49Z: mixed, 96 users, 180 s each, policy prefix_then_load, load bound 22, 32 seats
+admit settings: {'interactive_deadline_s': 3.0, 'over_cap_ttft_s': 4.0, 'tenant_window_scale': 2.0, 'tenant_window_tokens': {'interactive': 800000, 'batch': 300000}, 'base_ttft_s': 0.0, 'warm_ttft_s': 0.28}
+[transformers] PyTorch was not found. Models won't be available and only tokenizers, configuration and file/data utilities can be used.
+all warm after 16 s: {'WorkerA': True, 'WorkerB': True}
+mixed: 96 users for 180 s -> http://127.0.0.1:8765
+3300 requests, 1359 ok; by status: {'200': 1359, '429 over_cap': 1561, '429 timeout_queue': 380}
+TTFT p50 1672 ms, p95 3355 ms (laptop-measured, includes network)
+prompt tokens median 2134, output tokens median 180
+  tenant batch: 1650 requests
+  tenant interactive: 1650 requests
+wrote metrics/run_m2/traffic_mixed.jsonl
+scraping WorkerA, WorkerB, gateway every 5 s -> metrics/run_m2/scrape_run_m2.jsonl
+stopped after 40 scrapes; wrote metrics/run_m2/scrape_run_m2.jsonl
+run_m2 end 2026-10-03T13:10:26Z

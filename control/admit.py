@@ -65,23 +65,27 @@ CAPACITY_OVERFLOW = {("interactive", "over_cap")}
 
 # Run J settings (Pavithra's three open decisions after run I). The constants above stay run I's
 # values; the gateway applies these only when its flags ask for it.
-RUN_I_SETTINGS = {"over_cap_ttft_s": OVER_CAP_TTFT_S, "tenant_window_scale": 1.0, "base_ttft_s": BASE_TTFT_S}
+RUN_I_SETTINGS = {"over_cap_ttft_s": OVER_CAP_TTFT_S, "tenant_window_scale": 1.0, "base_ttft_s": BASE_TTFT_S,
+                  "interactive_deadline_s": DEADLINE_S["interactive"]}
 RUN_J_SETTINGS = {"over_cap_ttft_s": 4.0, "tenant_window_scale": 2.0, "base_ttft_s": 0.0}
 _BASE_WINDOWS = dict(TENANT_WINDOW_TOKENS)
 
 
 def apply_settings(over_cap_ttft_s: float = OVER_CAP_TTFT_S, tenant_window_scale: float = 1.0,
-                   base_ttft_s: float = BASE_TTFT_S) -> dict:
+                   base_ttft_s: float = BASE_TTFT_S, interactive_deadline_s: float = 6.0) -> dict:
     """Set the interactive over_cap trigger, the tenant-window scale and the backlog floor.
 
     The scale multiplies run I's per-worker windows (400,000 and 150,000), not the current ones,
-    so a second call does not compound. Returns the active values, for the run log.
+    so a second call does not compound. The interactive deadline is set in admit and in the queue
+    together (run M), so the two never disagree. Returns the active values, for the run log.
     """
+    from control import queue
     global OVER_CAP_TTFT_S, TENANT_WINDOW_TOKENS, BASE_TTFT_S
     OVER_CAP_TTFT_S = float(over_cap_ttft_s)
     TENANT_WINDOW_TOKENS = {t: int(v * tenant_window_scale) for t, v in _BASE_WINDOWS.items()}
     BASE_TTFT_S = float(base_ttft_s)
-    return {"over_cap_ttft_s": OVER_CAP_TTFT_S, "tenant_window_scale": float(tenant_window_scale),
+    DEADLINE_S["interactive"] = queue.QUEUE_DEADLINE_S["interactive"] = float(interactive_deadline_s)
+    return {"interactive_deadline_s": DEADLINE_S["interactive"], "over_cap_ttft_s": OVER_CAP_TTFT_S, "tenant_window_scale": float(tenant_window_scale),
             "tenant_window_tokens": dict(TENANT_WINDOW_TOKENS), "base_ttft_s": BASE_TTFT_S}
 
 

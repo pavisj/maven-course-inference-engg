@@ -1,0 +1,15 @@
+{
+  "requests": 20,
+  "closed_by_client": 10,
+  "launch_s": 3.0,
+  "close_s": 4.0,
+  "engine_aborted_delta": {
+    "WorkerA": 0.0,
+    "WorkerB": 0.0
+  },
+  "engine_requests_delta": {
+    "WorkerA": 0.0,
+    "WorkerB": 10.0
+  },
+  "kept_end_s_max": 12.318
+}

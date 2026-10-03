@@ -4,6 +4,7 @@ inspect(payload, tenant) -> Guard(ok, code, reason, prompt_tokens, max_tokens)
 
 Checks, in order; the first failure wins:
 1. bad_body              400  messages missing or malformed, or max_tokens not a positive integer
+   unknown_model         400  model is set and is not the served model ("tutor"), e.g. "gpt-4o" (run L)
 2. unknown_tenant        400  X-Tenant is not interactive or batch
 3. prompt_too_long       400  prompt_tokens + max_tokens > MAX_MODEL_LEN
 4. max_tokens_too_large  400  max_tokens above the tenant's budget
@@ -20,6 +21,7 @@ from app.tokenizer import get_tokenizer
 MAX_MODEL_LEN = 8192                              # --max-model-len (cluster/modal_vllm.py; Part 1)
 MAX_TOKENS = {"interactive": 512, "batch": 256}   # answer budget per tenant (decision 6, 2026-10-03)
 TENANTS = tuple(MAX_TOKENS)
+MODELS = ("tutor",)                              # --served-model-name; a missing model is allowed
 ROLES = {"system", "user", "assistant"}
 
 
@@ -57,6 +59,8 @@ def _body_ok(payload) -> bool:
 def inspect(payload, tenant: str | None) -> Guard:
     if not _body_ok(payload):
         return Guard(False, 400, "bad_body")
+    if payload.get("model") is not None and payload.get("model") not in MODELS:
+        return Guard(False, 400, "unknown_model")
     if tenant not in TENANTS:
         return Guard(False, 400, "unknown_tenant")
     max_tokens = payload.get("max_tokens") or MAX_TOKENS[tenant]

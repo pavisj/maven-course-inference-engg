@@ -1,0 +1,20 @@
+{
+  "requests": 20,
+  "closed_by_client": 10,
+  "launch_s": 3.0,
+  "close_s": 4.0,
+  "engine_aborted_delta": {
+    "WorkerA": 0.0,
+    "WorkerB": 0.0
+  },
+  "engine_requests_delta": {
+    "WorkerA": 0.0,
+    "WorkerB": 10.0
+  },
+  "engine_prompt_tokens_delta": {
+    "WorkerA": 11411.0,
+    "WorkerB": 30910.0
+  },
+  "closed_at_s_max": 1.006,
+  "kept_end_s_max": 10.821
+}

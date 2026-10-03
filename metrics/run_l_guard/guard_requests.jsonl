@@ -1,0 +1,12 @@
+{"expect": "prompt_too_long", "status": 400, "reason": "prompt_too_long", "ms": 39.6}
+{"expect": "prompt_too_long", "status": 400, "reason": "prompt_too_long", "ms": 19.7}
+{"expect": "prompt_too_long", "status": 400, "reason": "prompt_too_long", "ms": 16.4}
+{"expect": "prompt_too_long", "status": 400, "reason": "prompt_too_long", "ms": 15.9}
+{"expect": "unknown_model", "status": 400, "reason": "unknown_model", "ms": 1.4}
+{"expect": "unknown_model", "status": 400, "reason": "unknown_model", "ms": 1.2}
+{"expect": "unknown_model", "status": 400, "reason": "unknown_model", "ms": 1.2}
+{"expect": "unknown_model", "status": 400, "reason": "unknown_model", "ms": 1.2}
+{"expect": "max_tokens_too_large", "status": 400, "reason": "max_tokens_too_large", "ms": 3.8}
+{"expect": "max_tokens_too_large", "status": 400, "reason": "max_tokens_too_large", "ms": 3.4}
+{"expect": "max_tokens_too_large", "status": 400, "reason": "max_tokens_too_large", "ms": 3.6}
+{"expect": "max_tokens_too_large", "status": 400, "reason": "max_tokens_too_large", "ms": 3.4}

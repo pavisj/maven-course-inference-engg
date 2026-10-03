@@ -1,0 +1,26 @@
+{
+  "sent": 12,
+  "rejected_400": 12,
+  "matched_expected_reason": 12,
+  "by_reason": {
+    "prompt_too_long": 4,
+    "unknown_model": 4,
+    "max_tokens_too_large": 4
+  },
+  "gateway_guard_rejects_delta": {
+    "bad_body": 0.0,
+    "unknown_model": 4.0,
+    "unknown_tenant": 0.0,
+    "prompt_too_long": 4.0,
+    "max_tokens_too_large": 4.0
+  },
+  "engine_requests_delta": {
+    "WorkerA": 0.0,
+    "WorkerB": 0.0
+  },
+  "engine_prompt_tokens_delta": {
+    "WorkerA": 0.0,
+    "WorkerB": 0.0
+  },
+  "guard_ms_p50": 3.6
+}

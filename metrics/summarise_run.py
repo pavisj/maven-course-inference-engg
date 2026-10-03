@@ -41,7 +41,7 @@ def main(folder: Path) -> dict:
     out["sheds_by_stage"] = dict(Counter(r.get("stage") for r in gw if r["decision"] == "shed"))
     out["guard_rejects"] = dict(Counter(r["reason"] for r in gw if r["decision"] == "guard"))
     out["leave"] = dict(Counter((r.get("outcome") or r.get("reason")) for r in gw if r["decision"] == "leave"))
-    out["aborts"] = {"queued": sum(1 for r in gw if r["decision"] == "abort"),
+    out["aborts"] = {"queued": sum(1 for r in gw if r["decision"] in ("abort", "aborted") and r.get("stage") == "queue"),
                      "in_flight": sum(1 for r in gw if r.get("outcome") == "client_gone")}
     ok = [r for r in gw if r["decision"] == "ok"]
     out["admitted_by_tenant"] = dict(Counter(r["tenant"] for r in ok))

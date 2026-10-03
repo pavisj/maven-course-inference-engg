@@ -25,6 +25,7 @@ MAX_IN_FLIGHT="${MAX_IN_FLIGHT:-32}"
 TENANT_SCALE="${TENANT_SCALE:-1}"         # multiplies both tenant windows (1 = run I; run J: 2)
 OVER_CAP_TTFT="${OVER_CAP_TTFT:-2.0}"     # interactive over_cap trigger, seconds (run I: 2; run J: 4)
 BASE_TTFT="${BASE_TTFT:-0.4}"             # prefill-backlog floor in the estimate, seconds (run I: 0.4; run J: 0)
+INTERACTIVE_DEADLINE="${INTERACTIVE_DEADLINE:-6}"   # interactive deadline, admit and queue, seconds (run M: 3)
 WARM_TTFT="${WARM_TTFT:-0.211}"           # warm line, seconds (run J: 0.28, the workers' steady probe was 233 ms)
 WARM_WAIT="${WARM_WAIT:-600}"
 GATEWAY="http://127.0.0.1:8765"
@@ -36,7 +37,7 @@ echo "$RUN start $(date -u +%Y-%m-%dT%H:%M:%SZ): $MIXES, $USERS users, $DURATION
 # 1. gateway
 "$PY" -m control.gateway --workers "$WORKERS" --out-dir "$OUT" --policy "$POLICY" --load-bound "$LOAD_BOUND" --max-in-flight "$MAX_IN_FLIGHT" \
   --tenant-window-scale "$TENANT_SCALE" --over-cap-ttft "$OVER_CAP_TTFT" --base-ttft "$BASE_TTFT" \
-  --warm-ttft "$WARM_TTFT" >> "$LOG" 2>&1 &
+  --warm-ttft "$WARM_TTFT" --interactive-deadline "$INTERACTIVE_DEADLINE" >> "$LOG" 2>&1 &
 GATEWAY_PID=$!
 SCRAPE_PID=""
 trap 'kill -TERM $SCRAPE_PID $GATEWAY_PID 2>/dev/null || true' EXIT

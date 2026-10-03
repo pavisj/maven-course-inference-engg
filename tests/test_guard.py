@@ -41,3 +41,10 @@ def test_max_tokens_too_large():
     assert inspect({"messages": msgs(), "max_tokens": 513}, "interactive").reason == "max_tokens_too_large"
     assert inspect({"messages": msgs(), "max_tokens": 257}, "batch").reason == "max_tokens_too_large"
     assert inspect({"messages": msgs(), "max_tokens": 256}, "batch").ok
+
+
+def test_unknown_model():
+    msgs = [{"role": "user", "content": "What is TTFT?"}]
+    assert inspect({"model": "gpt-4o", "messages": msgs}, "interactive").reason == "unknown_model"
+    assert inspect({"model": "tutor", "messages": msgs}, "interactive").ok
+    assert inspect({"messages": msgs}, "interactive").ok          # no model: the gateway serves the tutor model

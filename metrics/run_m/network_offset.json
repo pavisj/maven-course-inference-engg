@@ -1,0 +1,17 @@
+{
+  "n": 20,
+  "ts": 1791032361.847158,
+  "workers": {
+    "WorkerA": {
+      "median_ms": 287.7,
+      "min_ms": 280.0,
+      "max_ms": 303.7
+    },
+    "WorkerB": {
+      "median_ms": 404.0,
+      "min_ms": 393.4,
+      "max_ms": 576.6
+    }
+  },
+  "offset_s": 0.3459
+}

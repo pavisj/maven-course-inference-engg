@@ -1,0 +1,12 @@
+{"ts": 1791032405.17043, "tenant": "interactive", "chapter": "06", "policy": "prefix_then_load", "load_bound": 22, "decision": "guard", "reason": "prompt_too_long", "stage": "guard", "status": 400}
+{"ts": 1791032405.202622, "tenant": "interactive", "chapter": "06", "policy": "prefix_then_load", "load_bound": 22, "decision": "guard", "reason": "prompt_too_long", "stage": "guard", "status": 400}
+{"ts": 1791032405.222181, "tenant": "interactive", "chapter": "06", "policy": "prefix_then_load", "load_bound": 22, "decision": "guard", "reason": "prompt_too_long", "stage": "guard", "status": 400}
+{"ts": 1791032405.238396, "tenant": "interactive", "chapter": "06", "policy": "prefix_then_load", "load_bound": 22, "decision": "guard", "reason": "prompt_too_long", "stage": "guard", "status": 400}
+{"ts": 1791032405.2541702, "tenant": "interactive", "chapter": "06", "policy": "prefix_then_load", "load_bound": 22, "decision": "guard", "reason": "unknown_model", "stage": "guard", "status": 400}
+{"ts": 1791032405.255424, "tenant": "interactive", "chapter": "06", "policy": "prefix_then_load", "load_bound": 22, "decision": "guard", "reason": "unknown_model", "stage": "guard", "status": 400}
+{"ts": 1791032405.256593, "tenant": "interactive", "chapter": "06", "policy": "prefix_then_load", "load_bound": 22, "decision": "guard", "reason": "unknown_model", "stage": "guard", "status": 400}
+{"ts": 1791032405.2578251, "tenant": "interactive", "chapter": "06", "policy": "prefix_then_load", "load_bound": 22, "decision": "guard", "reason": "unknown_model", "stage": "guard", "status": 400}
+{"ts": 1791032405.259132, "tenant": "interactive", "chapter": "06", "policy": "prefix_then_load", "load_bound": 22, "decision": "guard", "reason": "max_tokens_too_large", "stage": "guard", "status": 400}
+{"ts": 1791032405.262849, "tenant": "interactive", "chapter": "06", "policy": "prefix_then_load", "load_bound": 22, "decision": "guard", "reason": "max_tokens_too_large", "stage": "guard", "status": 400}
+{"ts": 1791032405.266208, "tenant": "interactive", "chapter": "06", "policy": "prefix_then_load", "load_bound": 22, "decision": "guard", "reason": "max_tokens_too_large", "stage": "guard", "status": 400}
+{"ts": 1791032405.269815, "tenant": "interactive", "chapter": "06", "policy": "prefix_then_load", "load_bound": 22, "decision": "guard", "reason": "max_tokens_too_large", "stage": "guard", "status": 400}

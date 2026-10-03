@@ -1,0 +1,2 @@
+admit settings: {'interactive_deadline_s': 6.0, 'over_cap_ttft_s': 4.0, 'tenant_window_scale': 2.0, 'tenant_window_tokens': {'interactive': 800000, 'batch': 300000}, 'base_ttft_s': 0.0, 'warm_ttft_s': 0.28}
+[transformers] PyTorch was not found. Models won't be available and only tokenizers, configuration and file/data utilities can be used.

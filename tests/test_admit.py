@@ -206,3 +206,15 @@ def test_run_j_base_ttft_floor_removed(run_i_after):
     assert est_ttft(idle, "WorkerA") == pytest.approx(0.15)  # run J: Little's law idle TTFT (baseline A 153 ms)
     s = snap(waiting=10, rate=100.0, uncached=4096)        # backlog alone: 10 x 0.85 = 8.5 s
     assert est_ttft(s, "WorkerA") == pytest.approx(8.5)
+
+
+def test_run_m_interactive_deadline_sets_admit_and_queue(run_i_after):
+    from control import queue
+    s = snap(queue=10, rate=3.0)                           # 10 / 3 + 0.15 = 3.48 s
+    assert shed(interactive(), s)[2] == "ok"               # under the 6 s deadline
+    info = run_i_after(interactive_deadline_s=3.0)
+    assert info["interactive_deadline_s"] == 3.0 and queue.QUEUE_DEADLINE_S["interactive"] == 3.0
+    assert shed(interactive(), s)[2] == "timeout_queue"    # 3.48 s > 3 s
+    assert shed(batch(), s)[2] != "timeout_queue"          # batch keeps its 60 s
+    run_i_after()
+    assert queue.QUEUE_DEADLINE_S["interactive"] == 6.0
