@@ -1,0 +1,3 @@
+WorkerA: engine TTFT per probe (ms): 365, 184, 185, 176, 176 -> WARM (last 0.1759 s, threshold 0.18 s)
+WorkerB: engine TTFT per probe (ms): 1007, 187, 187, 176, 175 -> WARM (last 0.1754 s, threshold 0.18 s)
+wrote metrics/run_e/warm_proof.json

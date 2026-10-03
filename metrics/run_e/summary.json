@@ -1,0 +1,122 @@
+{
+  "run": "run_e",
+  "requests_sent": 954,
+  "decisions": {
+    "ok": 305,
+    "shed": 649
+  },
+  "sheds_by_reason_tenant": {
+    "interactive/tenant_tokens": 635,
+    "interactive/timeout_queue": 14
+  },
+  "sheds_by_stage": {
+    "admit": 649
+  },
+  "guard_rejects": {},
+  "leave": {},
+  "aborts": {
+    "queued": 0,
+    "in_flight": 0
+  },
+  "admitted_by_tenant": {
+    "interactive": 305
+  },
+  "placed_by_worker": {
+    "WorkerB": 158,
+    "WorkerA": 147
+  },
+  "preferred_by_worker": {
+    "WorkerB": 305
+  },
+  "hops": {
+    "total": 147,
+    "by_route": {
+      "WorkerB->WorkerA": 147
+    },
+    "tokens_recomputed": 310030,
+    "share_of_admitted": 0.482
+  },
+  "gateway_ttft_ms": {
+    "all": {
+      "p50": 530,
+      "p95": 3023
+    },
+    "interactive": {
+      "p50": 530,
+      "p95": 3023
+    }
+  },
+  "est_vs_measured": {
+    "n": 305,
+    "est_p50_s": 0.4,
+    "measured_p50_s": 0.53,
+    "measured_over_est_p50": 1.32,
+    "within_50pct": 0.603,
+    "queue_wait_p95_s": 0.007
+  },
+  "by_mix": {
+    "shared_chapter": {
+      "sent": 954,
+      "admitted": 305,
+      "shed": {
+        "timeout_queue": 14,
+        "tenant_tokens": 635
+      },
+      "hopped": 147,
+      "gateway_ttft_p50_ms": 530,
+      "gateway_ttft_p95_ms": 3023,
+      "laptop_ttft_p50_ms": 546,
+      "laptop_ttft_p95_ms": 3314
+    }
+  },
+  "workers": {
+    "WorkerA": {
+      "max_running": 24.0,
+      "max_waiting": 0.0,
+      "max_kv_pct": 8.9,
+      "preemptions": 0,
+      "prefix_hit_pct": 61.2,
+      "engine_ttft_mean_ms": 433,
+      "requests_seen": 147,
+      "gateway_queue_max": 0.0,
+      "gateway_queue_mean": 0.0,
+      "gateway_in_flight_max": 24.0,
+      "gateway_in_flight_mean": 7.0
+    },
+    "WorkerB": {
+      "max_running": 26.0,
+      "max_waiting": 0.0,
+      "max_kv_pct": 9.2,
+      "preemptions": 0,
+      "prefix_hit_pct": 59.3,
+      "engine_ttft_mean_ms": 504,
+      "requests_seen": 155,
+      "gateway_queue_max": 0.0,
+      "gateway_queue_mean": 0.0,
+      "gateway_in_flight_max": 26.0,
+      "gateway_in_flight_mean": 8.8
+    }
+  },
+  "warm_proof": {
+    "WorkerA": {
+      "probes_ms": [
+        365,
+        184,
+        185,
+        176,
+        176
+      ],
+      "warm": true
+    },
+    "WorkerB": {
+      "probes_ms": [
+        1007,
+        187,
+        187,
+        176,
+        175
+      ],
+      "warm": true
+    }
+  }
+}

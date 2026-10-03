@@ -1,0 +1,2 @@
+stopping WorkerB container ta-01M40M42PMWSEVQGKYQ69EVKWR
+{"worker": "WorkerB", "stopped": ["ta-01M40M42PMWSEVQGKYQ69EVKWR"], "new_containers": ["ta-01M40N2J0KAJCEDYEZ7BTC50VR"], "healthy_after_s": 133.7}
