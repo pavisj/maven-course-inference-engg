@@ -444,6 +444,111 @@ Run I: run G's load (96 users, `mixed`, 4 min, normal engine), with capacity ove
 - The limiter, not Overflow, is the bottleneck: 93 % of interactive `over_cap` requests still got the 429.
 - **Went wrong:** 20 interactive `timeout_queue` sheds in the first 7.6 to 10.6 s. After the 10th completion, the rate divided by the time since the gateway started, which included the 12 s warm-up wait. Fixed after run I (rate span from the first completion, with a test), not re-measured on GPU.
 
+### Run J: the three open decisions, tested together
+
+**Answer: goodput rose from 322.6 to 432.0 per minute, but only for interactive. Batch goodput fell from 130.1 to 7.4 per minute. Interactive TTFT p50 rose from 757 ms to 3,506 ms. The defaults stay run I's values.**
+
+Run J: run I's load (96 users, `mixed`, 4 min, normal engine, capacity overflow on). Overflow was pre-warmed first: up after 129.8 s (`metrics/run_j/overflow_prewarm.json`). Each setting sits behind a gateway flag. Run I's value stays the default.
+
+| Setting | Run I (default) | Run J | Gateway flag / `gateway_run.sh` env |
+|---|---|---|---|
+| Interactive `over_cap` trigger | 2 s | 4 s | `--over-cap-ttft` / `OVER_CAP_TTFT` |
+| Tenant windows per warm worker | 400,000 interactive, 150,000 batch | 800,000 interactive, 300,000 batch | `--tenant-window-scale` / `TENANT_SCALE` |
+| Prefill-backlog floor in est_ttft | 0.4 s | 0 (removed) | `--base-ttft` / `BASE_TTFT` |
+
+```bash
+RUN=run_j MIXES=mixed USERS=96 DURATION=240 TENANT_SCALE=2 OVER_CAP_TTFT=4 BASE_TTFT=0 WARM_TTFT=0.28 bash traffic/gateway_run.sh
+```
+
+The gateway writes the active values to `metrics/run_j/admit_settings.json`. Tests: `tests/test_admit.py`, one per setting and one for the defaults (47 pass).
+
+**Two differences from run I come from the deploy, not from the settings:**
+
+- **The fresh workers were slower.** Warm probes measured 229 to 244 ms on the last probe (run I: 168 to 192 ms), across 6 rounds. There was no cold first probe (about 200 ms, not 1,000 ms). The 0.211 s warm line would never pass. **Decision:** run J used a warm line of 0.28 s, the 233 ms steady probe × 1.2 (`--warm-ttft`, env `WARM_TTFT`). The default stays 0.211 s. Both workers passed on the first round, after 12 s, as in run I.
+- **The network trip was shorter:** 276 ms, against 348 ms in run I (`metrics/run_j/network_offset.json`). **Decision:** run J's "trip removed" numbers use its own 276 ms. `summarise_run.py` and `make_plots.py` now read `metrics/<run>/network_offset.json` first.
+
+| | Run I | Run J |
+|---|---|---|
+| Requests sent / admitted | 2,637 / 1,302 | 3,626 / 1,803 |
+| Goodput per minute, total | 322.6 | 432.0 |
+| Goodput per minute, interactive / batch | 192.5 / 130.1 | 424.6 / 7.4 |
+| Goodput per minute, WorkerA / WorkerB / Overflow | 160.7 / 152.7 / 9.7 | 214.7 / 214.9 / 2.4 |
+| Shed `tenant_tokens`, interactive / batch | 0 / 731 | 0 / 0 |
+| Shed `over_cap`, interactive / batch | 496 / 48 | 19 / 1,767 |
+| Shed `timeout_queue`, interactive / batch | 20 / 0, all at admit | 12 / 15, all in the queue |
+| Gateway TTFT p50 / p95, all | 1,080 / 3,205 ms | 3,518 / 4,576 ms |
+| Gateway TTFT p50 / p95, interactive | 757 / 2,187 ms | 3,506 / 4,557 ms |
+| Gateway TTFT p50 / p95, batch | 1,634 / 5,444 ms | 4,236 / 6,624 ms |
+| Overflow sent / limited / failed | 40 / 496 / 0 | 10 / 19 / 0 |
+| Overflow TTFT p50 / p95 | 1,007 / 2,143 ms | 992 / 1,026 ms |
+| est_ttft p50 / measured p50 | 0.817 / 1.080 s | 3.118 / 3.518 s |
+| Est within 50 %, raw | 60.4 % | 93.2 % |
+| Est within 50 %, trip removed | 47.7 % (348 ms trip) | 89.5 % (276 ms trip); 88.2 % with run I's 348 ms |
+| In flight per worker, mean | 17.2 / 16.8 | 30.3 / 30.4 |
+| Gateway queue per worker, max / mean | 8 / 1.6 | 13 / 11.4 and 11.0 |
+| Hops (share of admitted) | 436 (33.5 %) | 899 (49.9 %) |
+| Prefix hit rate, WorkerA / WorkerB | 69.5 % / 68.5 % | 53.3 % / 54.0 % |
+| Engine TTFT mean, WorkerA / WorkerB | 250 / 278 ms | 395 / 413 ms |
+| KV max, preemptions | 11.6 %, 0 | 14.3 %, 0 |
+
+Plots: `plots/run_j/`. Full comparison: `metrics/run_j/compare_run_i.json` (`python metrics/compare_runs.py --base run_i --new run_j`).
+
+**What happened:**
+
+1. **The seats filled.** In run I, the 2 s trigger shed interactive requests while the seats were only half used: 17 of 32 in flight on average. With 4 s, admit lets the gateway queue grow until est_ttft reaches 4 s. At about 3.7 completions per second per worker, that is about 13 waiting. In flight stayed at 32 on both workers for the whole run (`plots/run_j/gateway_queue_by_worker.png`). **The trigger works as a queue-length cap: trigger × completion rate.**
+2. **Batch starved.** Batch `over_cap` sheds batch when vLLM waiting + gateway queue ≥ 8. The queue held 11 to 13 for the whole run. So 0 batch requests were admitted in minutes 1 to 3. The tenant windows ×2 removed every `tenant_tokens` shed (731 → 0), but batch then failed the next test, `over_cap`.
+3. **Interactive paid in TTFT.** After the first 30 s, an interactive TTFT was about 3.0 s of gateway queue wait plus 0.29 s in the engine plus the trip. In run I the queue wait was 36 ms. Goodput counts every answer within 6 s, so goodput does not show the 4.6× slower p50.
+4. **The load generator amplified it.** In `mixed`, each user alternates one interactive and one batch request. A shed batch request costs the user about 1 s (the 1 s retry floor × jitter). Then the user sends its next interactive request. So batch sheds became extra interactive load: interactive offered 432 per minute, against 318 in run I.
+5. **More hops.** With both workers full, place hopped half of all requests (49.9 %, run I 33.5 %). The prefix hit rate fell about 15 points. Engine TTFT rose from about 260 ms to about 400 ms. Part of that rise is the slower deploy.
+
+**Which setting did what:** one run tests all three together, so the split rests on the mechanism, not on a separate run.
+
+- The 4 s trigger filled the seats and the queue. That gave the interactive gain and the batch starvation.
+- Tenant windows ×2 removed `tenant_tokens`, but gave batch nothing while batch `over_cap` binds.
+- The floor removal changed only 67 decisions (see below).
+
+#### Did the run I estimator fix work?
+
+**Yes, at admit: run J had 0 `timeout_queue` sheds at admit in its first 15 s. Run I had 20, at 8.0 to 11.0 s after its first request, with estimates of 7.2 to 16.2 s.**
+
+- Counting by arrival time in the first 15 s, run J had 26 `timeout_queue` sheds, all at the queue stage:
+  - 12 interactive requests arrived at 0.28 to 0.35 s. Each waited the full 6 s deadline in the gateway queue.
+  - 14 batch requests arrived in the first 15 s. Each waited the full 60 s batch deadline behind interactive.
+- These are real waits, not false estimates. But the 12 interactive sheds show a second, smaller miss at start. Admit estimated 0.15 to 3.4 s for them. The completion-rate seed (4.0 per second per worker) assumes a steady state. At start, the first 32 answers on each worker finish at about the same time, so the first seats free later than the seed says.
+- Run I had no queue-stage sheds because its 2 s trigger sent these requests to Overflow or a 429 at admit.
+
+#### Estimate vs measured: what the floor removal showed
+
+- Within 50 %: 93.2 % raw and 89.5 % with the trip removed, against 60.4 % and 47.7 % in run I.
+- **This does not prove the floor removal.** Run J ran full for all 4 minutes: 1,730 of 1,803 admitted requests had est_ttft of 2 s or more. In that range the queue term dominates, and the estimate tracked in every loaded run (G, F2, I).
+- Only 67 decisions had est_ttft below 0.5 s, all in the first 0.3 s. With the floor removed they estimated 0.15 s. They measured about 3.4 s with the trip removed, because 64 prompts of about 2,100 tokens started prefill at once. The 0.4 s floor would have missed them too. Little's law counts waiting and queued requests, not prefills already in flight.
+- The light-load case, where the floor made the estimate too high (see "Network offset"), did not happen in run J. It needs a light-load run to test.
+
+#### What-if predictions vs run J
+
+| Knob | First-order prediction from run I | Run J measured | Held? |
+|---|---|---|---|
+| Interactive `over_cap` trigger 2 s → 4 s | 520 of 536 interactive `over_cap` admitted; +121.0 interactive goodput per minute | interactive `over_cap` attempts 536 → 29; interactive admitted +1,009; interactive goodput +232.1 per minute | **Sign and shed count held; the size was 2× too low** |
+| Tenant windows ×1 → ×2 | 509 of 731 batch `tenant_tokens` admitted; +127.5 batch goodput per minute | `tenant_tokens` 731 → 0; batch admitted −508; batch goodput −122.7 per minute | **No: wrong sign** |
+| Both together (sum) | +248.6 per minute (about 571 per minute) | +109.4 per minute (432.0) | **No** |
+| Overflow limiter 10 → 30 per minute | +20.0 per minute (80 more sent) | not changed in run J; only 29 attempts, 19 limited, so 30 per minute would add at most 19 sends (about 4.5 per minute) | **Premise gone** |
+| LOAD_BOUND 22 → 28 | 0 per minute | not changed in run J; hop share rose to 49.9 % with full workers | **Not tested** |
+
+Why the predictions held or failed:
+
+- **The replay keeps the logged queue state.** In run I the gateway queue stayed at 8 or less, so batch `over_cap` fired only 48 times. The trigger change raised the queue to 13, so batch's next test fired 1,767 times. The two knobs interact, and a one-knob replay cannot see that.
+- **The load is closed-loop.** Admitted users come back sooner, and shed batch users send their interactive request sooner. That extra interactive load met the seats that batch left free. So the trigger's gain was twice the first-order number.
+- **The shed count held because it does not depend on later state:** 536 − 520 = 16 interactive `over_cap` left in the prediction; 29 measured.
+
+#### Decisions taken in this session (Pavithra to confirm)
+
+1. Run J used a warm line of 0.28 s (above). The default stays 0.211 s.
+2. Run J's "trip removed" numbers use run J's own 276 ms trip.
+3. "First 15 s" counts requests by arrival time from the first gateway request. Admit-stage and queue-stage sheds are counted apart.
+4. The defaults stay run I's values. Run J's settings buy interactive goodput with batch goodput and with interactive TTFT, so I did not make them the default.
+
+**Next step:** give batch a protected share before the 4 s trigger is tried again, for example seats that only batch may use. Run J shows that, at full seats, interactive-first order plus batch `over_cap` at 8 leaves batch nothing.
+
 ### Goodput
 
 goodput = requests answered within deadline per minute: status 200 and the **first token** within the deadline from arrival (interactive 6 s, batch 60 s; the same deadlines admit and the queue use). Shed, failed or late = 0. Arrival is when the client sent the request, so the client-side TTFT counts. `metrics/goodput.json`, `plots/goodput_vs_offered.png`.
@@ -461,10 +566,12 @@ goodput = requests answered within deadline per minute: status 200 and the **fir
 | H1 | 48 | 500.3 | 294.3 | 59 % | 294.3 / none | 155.6 / 138.7 | 12 |
 | H2 | 48 | 471.8 | 341.8 | 72 % | 341.8 / none | 144.8 / 197.0 | 0 |
 | I | 96 | 636.3 | 322.6 | 51 % | 192.5 / 130.1 | 160.7 / 152.7 (+ Overflow 9.7) | 5 |
+| J | 96 | 864.0 | 432.0 | 50 % | 424.6 / 7.4 | 214.7 / 214.9 (+ Overflow 2.4) | 0 |
 
 - Offered load includes retries after a 429, so a run that sheds more offers more.
 - Runs F and F2 used tenant windows ×10 (KV tests): their goodput shows what the two workers can deliver without tenant limits, about 490 to 580 per minute.
 - Late answers stay small (0 to 23 per run): the gateway sheds work it cannot finish in time instead of answering late.
+- **Run J has the highest goodput at 96 users, but 98 % of it is interactive.** Goodput per minute does not show tenant fairness or the TTFT inside the deadline. Read it with goodput by tenant and TTFT p50.
 
 ### Policy ledger
 
@@ -477,19 +584,19 @@ goodput = requests answered within deadline per minute: status 200 and the **fir
 | place | home has < LOAD_BOUND in flight and is warm | go home | LOAD_BOUND 22 (28 in H2) | 70 % of 32 slots | D to I; H1 vs H2 | H2 vs H1: +9.9 hit-rate points, +47.5 goodput / min | hop share > 50 % for 10 min |
 | place | home busy or not warm | hop to the lowest-score worker | score = in flight + queue + waiting | Step 5b | D, E, G, I | E: 310,030 tokens recomputed | tokens recomputed / min rising |
 | place | no warm worker | 503 → failure overflow | none | Step 7 | none (never happened) | none measured | any `no_warm_worker` |
-| admit | tenant tokens + request > window × warm workers | 429 `tenant_tokens`, retry ≥ 2 s | 400,000 / 150,000 per worker | baseline B | D (6,018), G (770), I (731) | D capped at 165 / min; replay ×2: +109 to +129 / min | `tenant_tokens` > 20 % of a tenant's requests for 5 min |
-| admit | est_ttft > deadline | 429 `timeout_queue` | 6 s / 60 s; Little's law | baseline B p95 | E (14), G (24), I (20) | false sheds at start (fixed twice) | `timeout_queue` > 5 % of requests |
+| admit | tenant tokens + request > window × warm workers | 429 `tenant_tokens`, retry ≥ 2 s | 400,000 / 150,000 per worker | baseline B | D (6,018), G (770), I (731), J at ×2 (0) | D capped at 165 / min; replay ×2: +109 to +129 / min; J at ×2: batch −122.7 / min (batch moved to `over_cap`) | `tenant_tokens` > 20 % of a tenant's requests for 5 min |
+| admit | est_ttft > deadline | 429 `timeout_queue` | 6 s / 60 s; Little's law | baseline B p95 | E (14), G (24), I (20), J (0) | false sheds at start: fixed twice; J: 0 at admit in the first 15 s | `timeout_queue` > 5 % of requests |
 | admit | KV % + request blocks > 85 % | 429 `kv_free` | 85 %; num_gpu_blocks | Part 1 | F2 (781) | F2: 578 / min at KV 99.8 % | KV usage > 90 % or any preemption |
-| admit | batch: waiting + gateway queue ≥ 8 | 429 `over_cap` | 8 | Step 5a | G (68), I (48) | protects interactive TTFT | none |
-| admit | interactive: seats full and est_ttft > 2 s | Overflow under the limiter, else 429 `over_cap` | 2 s; 32 seats | baseline B | G (568 × 429), I (40 sent, 496 × 429) | replay 2 → 4 s: +121 to +131 / min | interactive `over_cap` > 10 % |
-| queue | 32 in flight on the worker | wait in the gateway; interactive first | 32 seats | `--max-num-seqs` | G, I (max 8 waiting) | interactive p50 716 ms vs batch 1,369 ms (G) | gateway queue wait p95 > 3 s |
-| queue | deadline passes while queued | 429 `timeout_queue` (stage queue) | 6 s / 60 s | Step 6 | G (3) | none measured | none |
+| admit | batch: waiting + gateway queue ≥ 8 | 429 `over_cap` | 8 | Step 5a | G (68), I (48), J (1,767) | protects interactive TTFT; J: starved batch when the queue held 13 | batch admitted = 0 for 1 min |
+| admit | interactive: seats full and est_ttft > 2 s | Overflow under the limiter, else 429 `over_cap` | 2 s (J: 4 s); 32 seats | baseline B | G (568 × 429), I (40 sent, 496 × 429), J at 4 s (10 sent, 19 × 429) | replay 2 → 4 s: +121 to +131 / min; J: interactive +232.1 / min, TTFT p50 757 → 3,506 ms | interactive `over_cap` > 10 % |
+| queue | 32 in flight on the worker | wait in the gateway; interactive first | 32 seats | `--max-num-seqs` | G, I (max 8 waiting), J (max 13) | interactive p50 716 ms vs batch 1,369 ms (G); J: 3 s queue wait | gateway queue wait p95 > 3 s |
+| queue | deadline passes while queued | 429 `timeout_queue` (stage queue) | 6 s / 60 s | Step 6 | G (3), J (27) | J: 12 interactive at start; 15 batch waited 60 s behind interactive | none |
 | queue | client gone (queued / in flight) | drop / close upstream so vLLM aborts | none | Step 6 | stub test | frees KV for others | in-flight aborts spike |
 | hop | chosen ≠ chapter home | record `recompute` | backend recompute | Part 6 | D to I | the price of a hop: lost prefix hits | none |
-| warm | last probe engine TTFT ≤ 0.211 s | mark warm; place may use it | 0.211 s | warm probes (run E) | E: 1,007 → 175 ms | avoids a 1 s first request | worker not warm > 5 min |
+| warm | last probe engine TTFT ≤ 0.211 s | mark warm; place may use it | 0.211 s (J: 0.28 s) | warm probes (run E) | E: 1,007 → 175 ms; J deploy steady at 229 to 244 ms | avoids a 1 s first request | worker not warm > 5 min |
 | overflow | 429, 500 or out of memory from a worker | stay: return with Retry-After | 2 s | Step 8 | unit tests | none measured | 500 rate > 0 |
 | overflow | 503 or 529 from a worker | the other worker once, then Overflow | 10 per minute | Step 8 | unit tests; Overflow check | none measured (no 503 in runs) | any engine 503 |
-| overflow | interactive `over_cap` (capacity) | Overflow under the limiter | 10 per minute | AMA whiteboard | I (40 sent) | +9.7 goodput / min; replay 10 → 30: +20 / min | overflow limited > 0 for 5 min |
+| overflow | interactive `over_cap` (capacity) | Overflow under the limiter | 10 per minute | AMA whiteboard | I (40 sent), J (10 sent) | +9.7 goodput / min; replay 10 → 30: +20 / min; J: 29 attempts, so the limiter barely matters at 4 s | overflow limited > 0 for 5 min |
 
 ### What-if replay (first-order)
 
@@ -503,6 +610,7 @@ goodput = requests answered within deadline per minute: status 200 and the **fir
 | Tenant windows ×1 → ×2 | D / E / G / I | 6,018 / 635 / 770 / 731 `tenant_tokens` | 1,441 / 218 / 516 / 509 admitted | +120.1 / +109.3 / +129.1 / +127.5 per min |
 
 - LOAD_BOUND: the replay reads each worker's in-flight count from the 5 s gateway scrape, not the exact value at decision time, so its "stay home" counts are rough.
+- **Run J checked two of these knobs together** (see "Run J" above). The `over_cap` trigger held in sign and was 2× too low. Tenant windows ×2 had the wrong sign: batch moved from `tenant_tokens` to `over_cap`.
 
 ### Network offset
 
@@ -521,9 +629,11 @@ The estimate predicts engine TTFT; the gateway measures TTFT from arrival, which
 | H1 | 0.400 s | 0.530 s | 0.182 s | 78.8 % | 36.3 % |
 | H2 | 0.400 s | 0.490 s | 0.142 s | 84.3 % | 26.9 % |
 | I | 0.817 s | 1.080 s | 0.732 s | 60.4 % | 47.7 % |
+| J (floor removed; own trip 276 ms) | 3.118 s | 3.518 s | 3.241 s | 93.2 % | 89.5 % |
 
 - **The estimate is too high at light load.** With the trip removed, an idle engine answers in 142 to 226 ms, but est_ttft never goes below 0.4 s: that is the Step 4 prefill-backlog floor (`BASE_TTFT_S = 0.4`), which `max(Little, backlog)` keeps. The raw "within 50 %" looked good only because the 0.35 s trip filled that gap.
 - Under load (F2, G, I) the queue term dominates and the estimate tracks better.
+- Run J removed the floor, but ran full for the whole run. Its 89.5 % comes from the loaded regime, not from the floor removal. The light-load case is still untested.
 
 ## Part 8. Proof
 
