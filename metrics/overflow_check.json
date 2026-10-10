@@ -1,5 +1,5 @@
 {
-  "url": "https://pavithra-sj--tutor-cluster-overflow.us-east.modal.direct",
+  "url": "https://<workspace>--tutor-cluster-overflow.us-east.modal.direct",
   "model": "Qwen/Qwen2.5-1.5B-Instruct",
   "cold_start_s": 137.7,
   "health_codes_seen": [

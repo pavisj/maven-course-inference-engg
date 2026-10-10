@@ -1,6 +1,6 @@
 {
   "up": true,
-  "url": "https://pavithra-sj--tutor-cluster-overflow.us-east.modal.direct",
+  "url": "https://<workspace>--tutor-cluster-overflow.us-east.modal.direct",
   "waited_s": 129.6,
   "health_codes_seen": [
     "200",

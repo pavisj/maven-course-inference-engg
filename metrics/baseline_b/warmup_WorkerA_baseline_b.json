@@ -1,6 +1,6 @@
 {
   "worker": "WorkerA",
-  "url": "https://pavithra-sj--tutor-cluster-workera.us-east.modal.direct",
+  "url": "https://<workspace>--tutor-cluster-workera.us-east.modal.direct",
   "model": "tutor",
   "model_root": "Qwen/Qwen2.5-3B-Instruct",
   "run_id": "20261003-142302",

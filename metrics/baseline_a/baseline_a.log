@@ -1,19 +1,19 @@
 rehearsal start 2026-10-03T08:21:01Z: workers cluster/workers.json, 360 s per mix, 8 users
 WorkerA /health -> 200
 WorkerB /health -> 200
-unique: 8 users for 360 s -> https://pavithra-sj--tutor-cluster-workera.us-east.modal.direct
+unique: 8 users for 360 s -> https://<workspace>--tutor-cluster-workera.us-east.modal.direct
 578 requests, 578 ok, 0 failed
 TTFT p50 952 ms, p95 1146 ms (laptop-measured, includes network)
 prompt tokens median 2120, output tokens median 167
   tenant interactive: 578 requests
 wrote metrics/baseline_a/traffic_unique.jsonl
-shared_chapter: 8 users for 360 s -> https://pavithra-sj--tutor-cluster-workera.us-east.modal.direct
+shared_chapter: 8 users for 360 s -> https://<workspace>--tutor-cluster-workera.us-east.modal.direct
 621 requests, 621 ok, 0 failed
 TTFT p50 848 ms, p95 999 ms (laptop-measured, includes network)
 prompt tokens median 2184, output tokens median 161
   tenant interactive: 621 requests
 wrote metrics/baseline_a/traffic_shared_chapter.jsonl
-mixed: 8 users for 360 s -> https://pavithra-sj--tutor-cluster-workera.us-east.modal.direct
+mixed: 8 users for 360 s -> https://<workspace>--tutor-cluster-workera.us-east.modal.direct
 572 requests, 572 ok, 0 failed
 TTFT p50 899 ms, p95 1004 ms (laptop-measured, includes network)
 prompt tokens median 2042, output tokens median 222
@@ -23,7 +23,7 @@ wrote metrics/baseline_a/traffic_mixed.jsonl
 scraping WorkerA, WorkerB every 5 s -> metrics/baseline_a/scrape_baseline_a.jsonl
 stopped after 220 scrapes; wrote metrics/baseline_a/scrape_baseline_a.jsonl
 
-=== WorkerA  https://pavithra-sj--tutor-cluster-workera.us-east.modal.direct
+=== WorkerA  https://<workspace>--tutor-cluster-workera.us-east.modal.direct
   req 1: TTFT    825 ms laptop,   60.3 ms engine, prefix hits     0 of 495 prompt tokens
   req 2: TTFT    815 ms laptop,   28.7 ms engine, prefix hits   480 of 495 prompt tokens
   req 3: TTFT    932 ms laptop,   27.0 ms engine, prefix hits   480 of 495 prompt tokens
@@ -32,7 +32,7 @@ stopped after 220 scrapes; wrote metrics/baseline_a/scrape_baseline_a.jsonl
   request 1 vs 5: 825 ms -> 846 ms (laptop)
   saved metrics/baseline_a/warmup_WorkerA_baseline_a.json
 
-=== WorkerB  https://pavithra-sj--tutor-cluster-workerb.us-east.modal.direct
+=== WorkerB  https://<workspace>--tutor-cluster-workerb.us-east.modal.direct
   req 1: TTFT   1711 ms laptop,  915.9 ms engine, prefix hits     0 of 495 prompt tokens
   req 2: TTFT    816 ms laptop,   28.4 ms engine, prefix hits   480 of 495 prompt tokens
   req 3: TTFT    841 ms laptop,   27.5 ms engine, prefix hits   480 of 495 prompt tokens

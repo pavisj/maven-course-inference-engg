@@ -18,7 +18,7 @@ All tooling is built and was tested offline against a local stub engine. The stu
 | 5. Rehearsal | **Blocked** (see "What failed"). Added `traffic/rehearsal.sh`, which runs Task 5 as one command, tested end to end on the stub. | `5da6bf6` |
 | 6. `plots/make_plots.py` | Done. All five PNGs render from stub data. No PNG is in `plots/`, because there is no real data. | `f36e3cf` |
 | 7. `notebook/analysis.ipynb` | Done. Nine Part 5 headings, one code cell each. Every cell ran on stub data and on tonight's empty run folder. | `380693b` |
-| 8. Stop billing | Already stopped. `modal app stop tutor-cluster` at 22:21:51 UTC replied "App is already stopped. (Stopped at 2026-10-03 02:30:20+05:30 by 'pavithra-sj')". The container list is empty. | none |
+| 8. Stop billing | Already stopped. `modal app stop tutor-cluster` at 22:21:51 UTC replied "App is already stopped. (Stopped at 2026-10-03 02:30:20+05:30 by '<workspace>')". The container list is empty. | none |
 | 9. This report | Done. | this commit |
 
 ### Key numbers (tokenizer arithmetic, no engine run)

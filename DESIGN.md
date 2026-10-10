@@ -162,6 +162,7 @@ Hypothesis: KV first. Result: max_num_seqs=32 bound first, then compute (TTFT), 
 - **Auth is a follow-up.** Both workers run with `unauthenticated=True` for now, so anyone with a worker URL can call it.
 - **The gateway binds to localhost.** The app and the control plane listen only on localhost; only the engine URLs are on Modal.
 - **Follow-up:** set `unauthenticated=False` and send a Modal Proxy Token from the gateway (`Authorization: Bearer wk-<id>.ws-<secret>`).
+- **Worker URLs are redacted.** Files in `metrics/` show `<workspace>--tutor-cluster-…` in place of the Modal workspace. Older commits still hold the real URLs. Do not redeploy `tutor-cluster` with `unauthenticated=True` while this repo is public.
 
 ## Part 3. Guardrails, admit, stay vs leave
 
